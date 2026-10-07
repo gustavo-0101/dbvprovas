@@ -17,6 +17,27 @@ pwsh scripts/setup-dev.ps1 -TermsFile <caminho da lista local>
 
 Para conferir o repositório inteiro: `dotnet run --file tools/pc16-check.cs -- all`.
 
+## Ambiente de dev
+
+Requer o Docker Desktop ligado.
+
+```powershell
+pwsh scripts/setup-dev.ps1 -TermsFile <caminho da lista local>   # gera o .env e grava as strings de conexão
+docker compose up -d --wait
+dotnet run --project src/Dbvprovas.Api --launch-profile http
+```
+
+- API: http://localhost:5080. Em dev, ela aplica as migrations e um seed fictício ao subir.
+- Saúde: http://localhost:5080/health/ready
+- Logs, traces e métricas (Aspire Dashboard): http://localhost:18888
+
+## Testes
+
+```powershell
+dotnet test tests/Dbvprovas.Api.Tests      # Postgres em contêiner (Testcontainers)
+dotnet test tests/Dbvprovas.Tools.Tests    # verificador e hooks (exige o gitleaks)
+```
+
 ## Licença
 
 [AGPL-3.0](LICENSE).

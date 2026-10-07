@@ -99,9 +99,19 @@ jobs:
       - name: Testes do verificador
         run: dotnet test tests/Dbvprovas.Tools.Tests
 
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Testes da API (Testcontainers, Postgres 18)
+        run: dotnet test tests/Dbvprovas.Api.Tests -c Release
+
   ci-ok:
     if: always()
-    needs: [changes, pc16]
+    needs: [changes, pc16, backend]
     runs-on: ubuntu-latest
     steps:
       - name: Conferir o resultado dos jobs
