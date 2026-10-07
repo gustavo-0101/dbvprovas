@@ -3,6 +3,7 @@
     <Project Path="src/Dbvprovas.Api/Dbvprovas.Api.csproj" />
     <Project Path="src/Dbvprovas.Contracts/Dbvprovas.Contracts.csproj" />
     <Project Path="src/Dbvprovas.Ui/Dbvprovas.Ui.csproj" />
+    <Project Path="src/Dbvprovas.Web/Dbvprovas.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dbvprovas.Api.Tests/Dbvprovas.Api.Tests.csproj" />

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets["_content/Dbvprovas.Ui/app.css"]" />
+    <ImportMap />
+    <HeadOutlet @rendermode="WebAssemblyWithoutPrerendering" />
+</head>
+
+<body>
+    <Routes @rendermode="WebAssemblyWithoutPrerendering" />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>
+
+@code {
+    // Site em WebAssembly, sem pré-renderização: o HTML do servidor não leva dado nenhum (D-111).
+    private static readonly IComponentRenderMode WebAssemblyWithoutPrerendering = new InteractiveWebAssemblyRenderMode(prerender: false);
+}
