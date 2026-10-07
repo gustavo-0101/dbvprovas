@@ -30,6 +30,7 @@ jobs:
             common: &common
               - 'Directory.Build.props'
               - 'Directory.Packages.props'
+              - 'tests/Directory.Build.props'
               - 'global.json'
               - '.github/workflows/ci.yml'
             backend:

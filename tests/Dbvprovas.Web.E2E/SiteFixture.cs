@@ -36,29 +36,70 @@ public sealed class SiteFixture : IAsyncLifetime
         }
         catch
         {
-            await DisposeAsync();
+            try
+            {
+                await DisposeAsync();
+            }
+            catch
+            {
+                // A falha da limpeza não pode esconder o erro original da subida.
+            }
+
             throw;
         }
     }
 
+    // Cada passo roda mesmo que o anterior falhe: nem a API nem o contêiner ficam para trás.
     public async ValueTask DisposeAsync()
     {
         if (_disposed)
             return;
         _disposed = true;
 
-        if (_browser is not null)
-            await _browser.DisposeAsync();
-        _playwright?.Dispose();
+        try
+        {
+            if (_browser is not null)
+                await _browser.DisposeAsync();
+        }
+        finally
+        {
+            try
+            {
+                _playwright?.Dispose();
+            }
+            finally
+            {
+                try
+                {
+                    StopApi();
+                }
+                finally
+                {
+                    await _database.DisposeAsync();
+                }
+            }
+        }
+    }
 
-        if (_api is not null)
+    private void StopApi()
+    {
+        if (_api is null)
+            return;
+
+        try
         {
             if (!_api.HasExited)
+            {
                 _api.Kill(entireProcessTree: true);
+                // O Kill é assíncrono no SO; sem esperar, o processo ainda segura as DLLs do build
+                // e o contêiner pode cair com a API viva.
+                _api.WaitForExit(TimeSpan.FromSeconds(10));
+            }
+        }
+        finally
+        {
             _api.Dispose();
         }
-
-        await _database.DisposeAsync();
     }
 
     private async Task StartAsync()

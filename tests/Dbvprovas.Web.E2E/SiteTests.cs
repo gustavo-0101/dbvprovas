@@ -18,8 +18,9 @@ public sealed class SiteTests(SiteFixture site)
         await Expect(members).ToHaveTextAsync(new[] { "Aurora", "Caio", "Dalva" });
 
         // RNF-TEN-004: recarregar a página mantém a sessão guardada no sessionStorage.
+        // O Reload só espera o load; o WebAssembly sobe depois, e num runner frio isso passa dos 5 s do padrão.
         await page.ReloadAsync();
-        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Clube Águias", Level = 1 })).ToBeVisibleAsync();
+        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Clube Águias", Level = 1 })).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
         await page.GetByRole(AriaRole.Button, new() { Name = "Trocar de usuário" }).ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Bento — Clube Corujas" }).ClickAsync();
