@@ -51,6 +51,9 @@ public sealed class HookTests
 
         Assert.NotEqual(0, commit.ExitCode);
         Assert.DoesNotContain(secret, commit.Output);
+        // Prova que foi o gitleaks que bloqueou, e não o verificador do PC-16.
+        Assert.Contains("leaks found: 1", commit.Output);
+        Assert.DoesNotContain("pc16: ", commit.Output);
     }
 
     // Os dois hooks deixam passar um commit limpo (RNF-PRV-005).

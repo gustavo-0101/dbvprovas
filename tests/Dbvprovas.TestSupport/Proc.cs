@@ -33,8 +33,11 @@ public static class Proc
         };
         foreach (var arg in args)
             info.ArgumentList.Add(arg);
-        foreach (var (key, value) in env ?? new Dictionary<string, string>())
-            info.Environment[key] = value;
+        if (env is not null)
+        {
+            foreach (var (key, value) in env)
+                info.Environment[key] = value;
+        }
 
         using var process = Process.Start(info) ?? throw new InvalidOperationException($"Could not start {file}.");
         var stdout = process.StandardOutput.ReadToEndAsync();
@@ -44,7 +47,19 @@ public static class Proc
         process.StandardInput.Close();
 
         using var cts = new CancellationTokenSource(timeout ?? TimeSpan.FromMinutes(3));
-        await process.WaitForExitAsync(cts.Token);
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Estourou o tempo: encerra a árvore de processos para não deixar órfãos.
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            await process.WaitForExitAsync();
+            await Task.WhenAll(stdout, stderr);
+            throw new TimeoutException($"Process {file} exceeded the timeout and was killed.");
+        }
         return new ProcResult(process.ExitCode, await stdout, await stderr);
     }
 }
