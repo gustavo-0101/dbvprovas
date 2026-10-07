@@ -1,0 +1,6 @@
+#!/bin/sh
+# Verificação antes do commit (PC-16, D-109): segredos e fronteira entre o público e o privado.
+set -e
+hooks_dir="$(cd "$(dirname "$0")" && pwd)"
+gitleaks git --pre-commit --staged --redact --no-banner .
+dotnet run --file "$hooks_dir/../tools/pc16-check.cs" -- staged
