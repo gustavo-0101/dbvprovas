@@ -1,0 +1,31 @@
+name: dbvprovas
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?rode scripts/setup-dev.ps1 para gerar o .env}
+      DBV_OWNER_PASSWORD: ${DBV_OWNER_PASSWORD:?rode scripts/setup-dev.ps1 para gerar o .env}
+      DBV_APP_PASSWORD: ${DBV_APP_PASSWORD:?rode scripts/setup-dev.ps1 para gerar o .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./docker/postgres/roles.sql:/dbv/roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dbvprovas"]
+      interval: 5s
+      retries: 20
+
+  # Painel de logs, traces e métricas em dev (D-115). Recebe OTLP em localhost:4317.
+  dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "127.0.0.1:18888:18888"
+      - "127.0.0.1:4317:18889"
+
+volumes:
+  pgdata:
