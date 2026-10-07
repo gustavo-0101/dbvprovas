@@ -1,5 +1,6 @@
 using Dbvprovas.Api.Infrastructure;
 using Dbvprovas.Api.Modules.Identity;
+using Dbvprovas.Api.Modules.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +16,7 @@ app.UsePersonContext();
 app.UseAuthorization();
 
 app.MapMe();
+app.MapClubs();
 
 if (app.Environment.IsDevelopment())
 {
