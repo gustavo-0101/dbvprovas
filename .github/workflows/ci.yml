@@ -109,9 +109,27 @@ jobs:
       - name: Testes da API (Testcontainers, Postgres 18)
         run: dotnet test tests/Dbvprovas.Api.Tests -c Release
 
+  front:
+    needs: changes
+    if: needs.changes.outputs.front == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Componentes (bUnit)
+        run: dotnet test tests/Dbvprovas.Ui.Tests -c Release
+      - name: Build da API com o site e do E2E
+        run: dotnet build tests/Dbvprovas.Web.E2E -c Release
+      - name: Navegador do Playwright
+        run: pwsh tests/Dbvprovas.Web.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - name: Caminho feliz no navegador (Playwright)
+        run: dotnet test tests/Dbvprovas.Web.E2E -c Release --no-build
+
   ci-ok:
     if: always()
-    needs: [changes, pc16, backend]
+    needs: [changes, pc16, backend, front]
     runs-on: ubuntu-latest
     steps:
       - name: Conferir o resultado dos jobs

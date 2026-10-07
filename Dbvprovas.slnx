@@ -10,5 +10,6 @@
     <Project Path="tests/Dbvprovas.TestSupport/Dbvprovas.TestSupport.csproj" />
     <Project Path="tests/Dbvprovas.Tools.Tests/Dbvprovas.Tools.Tests.csproj" />
     <Project Path="tests/Dbvprovas.Ui.Tests/Dbvprovas.Ui.Tests.csproj" />
+    <Project Path="tests/Dbvprovas.Web.E2E/Dbvprovas.Web.E2E.csproj" />
   </Folder>
 </Solution>

@@ -128,6 +128,8 @@ ipch/
 
 # Visual Studio Trace Files
 *.e2e
+# O projeto de testes Dbvprovas.Web.E2E não é um arquivo de trace (o git ignora maiúsculas no Windows).
+!/tests/Dbvprovas.Web.E2E/
 
 # TFS 2012 Local Workspace
 $tf/
