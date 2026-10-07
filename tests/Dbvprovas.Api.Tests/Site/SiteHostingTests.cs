@@ -5,19 +5,23 @@ namespace Dbvprovas.Api.Tests.Site;
 
 public sealed class SiteHostingTests(PostgresFixture db)
 {
-    // CA-TEN-006, D-112: rota de API desconhecida é o 404 da API, nunca a página do site.
-    [Fact]
-    public async Task Unknown_api_path_returns_api_404_not_site_page()
+    // RNF-TEN-002, CA-TEN-006, D-112: rota de API desconhecida, com ou sem extensão, é o 404 vazio da
+    // API (RF-AUD-002), nunca a página do site.
+    [Theory]
+    [InlineData("api/nao-existe")]
+    [InlineData("api/nao-existe.json")]
+    public async Task Unknown_api_path_returns_api_404_not_site_page(string path)
     {
         await using var api = new ApiFactory(db, "Development");
 
-        var response = await api.CreateClient().GetAsync("api/nao-existe");
+        var response = await api.CreateClient().GetAsync(path);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.NotEqual("text/html", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("", await response.Content.ReadAsStringAsync());
     }
 
-    // O site é servido pela API, na mesma origem, sem pré-renderização (D-111, D-112).
+    // RNF-TEN-005, D-111, D-112: o site é servido pela API, na mesma origem, sem pré-renderização.
     [Theory]
     [InlineData("")]
     [InlineData("club")]

@@ -40,10 +40,13 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         "_framework/resource-collection.js.gz",
     ];
 
-    [Fact]
-    public async Task CA_TEN_006_Every_endpoint_has_explicit_policy()
+    // O AllowAnonymous do site vale em qualquer ambiente, então a varredura roda nos dois.
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Production")]
+    public async Task CA_TEN_006_Every_endpoint_has_explicit_policy(string environment)
     {
-        await using var api = new ApiFactory(db, "Development");
+        await using var api = new ApiFactory(db, environment);
         var endpoints = RouteEndpoints(api);
 
         Assert.NotEmpty(endpoints);
@@ -84,10 +87,12 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
 
     // A lista de recursos do Blazor tem nome com impressão digital; só os nomes que as páginas declaram
     // no mapa de importação são aceitos.
-    [Fact]
-    public async Task CA_TEN_006_Resource_collection_routes_come_from_the_page_import_map()
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Production")]
+    public async Task CA_TEN_006_Resource_collection_routes_come_from_the_page_import_map(string environment)
     {
-        await using var api = new ApiFactory(db, "Development");
+        await using var api = new ApiFactory(db, environment);
         var endpoints = RouteEndpoints(api);
         var allowed = AnonymousRoutes(endpoints);
 
@@ -96,6 +101,41 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         Assert.Equal(4, declared.Count);
         Assert.False(HasExplicitPolicy(AnonymousEndpoint("/_framework/resource-collection.zzzzz.js"), allowed));
     }
+
+    // O conteúdo do mapa de importação nunca alarga a lista: valor fora da forma do arquivo de recursos é ignorado.
+    [Theory]
+    [InlineData("./_framework/export")]
+    [InlineData("./_framework/resource-collection.abc12.exe")]
+    [InlineData("./_framework/resource-collection.x/export.js")]
+    [InlineData("./_content/Dbvprovas.Ui/app.css")]
+    [InlineData("/_framework/resource-collection.abc12.js")]
+    [InlineData("_framework/resource-collection.abc12.js")]
+    public void CA_TEN_006_Import_map_value_outside_resource_collection_shape_is_ignored(string value)
+    {
+        var page = AnonymousEndpoint("/", ImportMap(("_framework/resource-collection.js", value)));
+
+        var routes = AnonymousRoutes([page]);
+
+        Assert.True(routes.SetEquals(FixedRoutes()));
+    }
+
+    [Fact]
+    public void CA_TEN_006_Import_map_value_with_resource_collection_shape_is_accepted()
+    {
+        var page = AnonymousEndpoint("/", ImportMap(
+            ("_framework/resource-collection.js", "./_framework/resource-collection.abc12.js"),
+            ("_framework/resource-collection.js.gz", "./_framework/resource-collection.abc12.js.gz")));
+
+        var routes = AnonymousRoutes([page]);
+
+        Assert.Contains("/_framework/resource-collection.js", routes);
+        Assert.Contains("/_framework/resource-collection.js.gz", routes);
+        Assert.Contains("/_framework/resource-collection.abc12.js", routes);
+        Assert.Contains("/_framework/resource-collection.abc12.js.gz", routes);
+    }
+
+    private static ImportMapDefinition ImportMap(params (string Name, string Value)[] imports) =>
+        new(imports.ToDictionary(import => import.Name, import => import.Value), scopes: null, integrity: null);
 
     private static List<RouteEndpoint> RouteEndpoints(ApiFactory api) =>
         api.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().ToList();
@@ -115,7 +155,7 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         {
             foreach (var name in ResourceCollectionNames)
             {
-                if (!imports.TryGetValue(name, out var fingerprinted))
+                if (!imports.TryGetValue(name, out var fingerprinted) || !IsResourceCollectionFile(fingerprinted))
                     continue;
                 routes.Add("/" + name);
                 routes.Add(fingerprinted[1..]); // "./_framework/..." vira "/_framework/..."
@@ -123,6 +163,15 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         }
 
         return routes;
+    }
+
+    // Só o arquivo de recursos entra: "./_framework/resource-collection.<impressão>.js" ou ".js.gz", sem subcaminho.
+    private static bool IsResourceCollectionFile(string value)
+    {
+        const string prefix = "./_framework/resource-collection.";
+        return value.StartsWith(prefix, StringComparison.Ordinal)
+            && (value.EndsWith(".js", StringComparison.Ordinal) || value.EndsWith(".js.gz", StringComparison.Ordinal))
+            && !value.AsSpan(prefix.Length).Contains('/');
     }
 
     private static RouteEndpoint AnonymousEndpoint(string route, params object[] metadata)
