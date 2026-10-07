@@ -1,0 +1,36 @@
+/* Estilo mínimo do R0: legível no celular e no computador. */
+html, body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.page {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+button {
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+    margin: 0.25rem 0;
+}
+
+ul.accounts, ul.members {
+    list-style: none;
+    padding: 0;
+}
+
+[role="alert"] {
+    color: #8a1c1c;
+}
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem;
+    background: #fff3cd;
+}

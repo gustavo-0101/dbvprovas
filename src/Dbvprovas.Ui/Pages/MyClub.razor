@@ -1,0 +1,104 @@
+@page "/club"
+@inject ApiClient Api
+@inject SessionState Session
+@inject NavigationManager Navigation
+
+<PageTitle>Meu clube</PageTitle>
+
+@switch (state)
+{
+    case State.Loading:
+        <p>Carregando…</p>
+        break;
+    case State.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case State.NotFound:
+        <p role="alert">Clube não encontrado.</p>
+        break;
+    case State.NoClub:
+        <p>Você ainda não participa de nenhum clube.</p>
+        break;
+    case State.Ready:
+        <h1>@club!.Name</h1>
+        <h2>Membros</h2>
+        <ul class="members">
+            @foreach (var member in members)
+            {
+                <li>@member.Name</li>
+            }
+        </ul>
+        break;
+}
+
+<button class="switch-user" @onclick="SwitchUserAsync">Trocar de usuário</button>
+
+@code {
+    private enum State { Loading, Ready, NoClub, NotFound, Unavailable }
+
+    private State state = State.Loading;
+    private ClubResponse? club;
+    private IReadOnlyList<MemberResponse> members = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        await LoadAsync();
+    }
+
+    // Mostra o clube da participação ativa e os nomes dos membros (RF-TEN-001, D-119).
+    private async Task LoadAsync()
+    {
+        state = State.Loading;
+        var me = await Api.GetMeAsync();
+        if (!me.IsOk)
+        {
+            await HandleErrorAsync(me.Error!.Value);
+            return;
+        }
+
+        if (me.Value!.Clubs.Count == 0)
+        {
+            state = State.NoClub;
+            return;
+        }
+
+        var clubId = me.Value.Clubs[0].Id;
+        var clubResult = await Api.GetClubAsync(clubId);
+        var membersResult = await Api.GetMembersAsync(clubId);
+        var error = clubResult.Error ?? membersResult.Error;
+        if (error is not null)
+        {
+            await HandleErrorAsync(error.Value);
+            return;
+        }
+
+        club = clubResult.Value;
+        members = membersResult.Value!;
+        state = State.Ready;
+    }
+
+    // Falhas sem detalhe técnico (RF-TEN-004).
+    private async Task HandleErrorAsync(ApiError error)
+    {
+        switch (error)
+        {
+            case ApiError.Unauthorized:
+                await SwitchUserAsync(); // sessão ausente ou vencida: volta para a escolha de conta
+                break;
+            case ApiError.NotFound:
+                state = State.NotFound;
+                break;
+            default:
+                state = State.Unavailable;
+                break;
+        }
+    }
+
+    private async Task SwitchUserAsync()
+    {
+        await Session.SignOutAsync();
+        Navigation.NavigateTo("");
+    }
+}

@@ -2,10 +2,12 @@
   <Folder Name="/src/">
     <Project Path="src/Dbvprovas.Api/Dbvprovas.Api.csproj" />
     <Project Path="src/Dbvprovas.Contracts/Dbvprovas.Contracts.csproj" />
+    <Project Path="src/Dbvprovas.Ui/Dbvprovas.Ui.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dbvprovas.Api.Tests/Dbvprovas.Api.Tests.csproj" />
     <Project Path="tests/Dbvprovas.TestSupport/Dbvprovas.TestSupport.csproj" />
     <Project Path="tests/Dbvprovas.Tools.Tests/Dbvprovas.Tools.Tests.csproj" />
+    <Project Path="tests/Dbvprovas.Ui.Tests/Dbvprovas.Ui.Tests.csproj" />
   </Folder>
 </Solution>
