@@ -1,0 +1,110 @@
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      front: ${{ steps.filter.outputs.front }}
+      app: ${{ steps.filter.outputs.app }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            common: &common
+              - 'Directory.Build.props'
+              - 'Directory.Packages.props'
+              - 'global.json'
+              - '.github/workflows/ci.yml'
+            backend:
+              - *common
+              - 'src/Dbvprovas.Api/**'
+              - 'src/Dbvprovas.Contracts/**'
+              - 'tests/Dbvprovas.Api.Tests/**'
+              - 'tests/Dbvprovas.TestSupport/**'
+              - 'docker/**'
+            front:
+              - *common
+              - 'src/Dbvprovas.Api/**'
+              - 'src/Dbvprovas.Contracts/**'
+              - 'src/Dbvprovas.Ui/**'
+              - 'src/Dbvprovas.Web/**'
+              - 'tests/Dbvprovas.Ui.Tests/**'
+              - 'tests/Dbvprovas.Web.E2E/**'
+              - 'tests/Dbvprovas.TestSupport/**'
+            app:
+              - *common
+              - 'src/Dbvprovas.App/**'
+              - 'src/Dbvprovas.Ui/**'
+              - 'src/Dbvprovas.Contracts/**'
+              - 'tests/Dbvprovas.App.Smoke/**'
+              - 'scripts/ci-android-smoke.sh'
+
+  pc16:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Instalar o gitleaks
+        run: |
+          version=8.30.1
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
+          curl -fsSLO "${base}/gitleaks_${version}_linux_x64.tar.gz"
+          curl -fsSLO "${base}/gitleaks_${version}_checksums.txt"
+          grep " gitleaks_${version}_linux_x64.tar.gz$" "gitleaks_${version}_checksums.txt" | sha256sum -c -
+          tar -xzf "gitleaks_${version}_linux_x64.tar.gz" gitleaks
+          sudo mv gitleaks /usr/local/bin/
+      - name: Segredos nos commits do PR
+        if: github.event_name == 'pull_request'
+        run: gitleaks git --redact --no-banner --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" .
+      - name: Fronteira nos arquivos (PC-16)
+        run: dotnet run --file tools/pc16-check.cs -- all --ci
+      - name: Fronteira nas mensagens dos commits
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+        env:
+          RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+        run: |
+          git log --format=%B "$RANGE" | gitleaks stdin --redact --no-banner
+          for sha in $(git rev-list "$RANGE"); do
+            git log -1 --format=%B "$sha" | dotnet run --file tools/pc16-check.cs -- text --ci
+          done
+      - name: Fronteira no título e na descrição do PR
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | gitleaks stdin --redact --no-banner
+          printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | dotnet run --file tools/pc16-check.cs -- text --ci
+      - name: Testes do verificador
+        run: dotnet test tests/Dbvprovas.Tools.Tests
+
+  ci-ok:
+    if: always()
+    needs: [changes, pc16]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir o resultado dos jobs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: echo "$NEEDS" | jq -e 'to_entries | all(.value.result == "success" or .value.result == "skipped")'
