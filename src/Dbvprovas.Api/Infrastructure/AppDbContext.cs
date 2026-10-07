@@ -24,6 +24,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ClubCon
             e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
             e.Property(x => x.Name).HasColumnName("name").IsRequired();
             e.Property(x => x.Status).HasColumnName("status").HasConversion<string>().IsRequired();
+            // RNF-TEN-001, D-124
+            e.HasQueryFilter(c => c.Id == CurrentClubId
+                || (CurrentClubId == null && Memberships.Any(m => m.ClubId == c.Id
+                    && m.PersonId == CurrentPersonId && m.EndedAt == null)));
         });
 
         model.Entity<Person>(e =>

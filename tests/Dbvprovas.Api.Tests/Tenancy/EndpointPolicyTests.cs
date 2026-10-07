@@ -5,6 +5,7 @@ using Dbvprovas.Contracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dbvprovas.Api.Tests.Tenancy;
@@ -28,17 +29,24 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
 
         Assert.NotEmpty(endpoints);
         foreach (var endpoint in endpoints)
-        {
-            var pattern = "/" + endpoint.RoutePattern.RawText!.TrimStart('/');
-            var anonymous = endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null;
-            var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
-            var isApi = pattern.StartsWith("/api/") || pattern.StartsWith("/health/") || pattern.StartsWith("/openapi/");
+            Assert.True(HasExplicitPolicy(endpoint));
+    }
 
-            if (isApi && anonymous)
-                Assert.Contains(pattern, AnonymousApiRoutes);
-            else
-                Assert.True(anonymous || policies.Any(p => !string.IsNullOrWhiteSpace(p.Policy)), $"Rota sem política explícita: {pattern}");
-        }
+    [Fact]
+    public void CA_TEN_006_Anonymous_endpoint_outside_allowlist_is_rejected()
+    {
+        var builder = new RouteEndpointBuilder(_ => Task.CompletedTask, RoutePatternFactory.Parse("/export"), 0);
+        builder.Metadata.Add(new AllowAnonymousAttribute());
+        Assert.False(HasExplicitPolicy((RouteEndpoint)builder.Build()));
+    }
+
+    private static bool HasExplicitPolicy(RouteEndpoint endpoint)
+    {
+        var pattern = "/" + endpoint.RoutePattern.RawText!.TrimStart('/');
+        var anonymous = endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null;
+        var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
+        return anonymous ? AnonymousApiRoutes.Contains(pattern)
+            : policies.Any(p => !string.IsNullOrWhiteSpace(p.Policy));
     }
 
     [Fact]

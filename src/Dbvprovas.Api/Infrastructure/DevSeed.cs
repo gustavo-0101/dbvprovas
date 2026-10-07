@@ -40,7 +40,7 @@ public static class DevSeed
 
     public static async Task ApplyAsync(AppDbContext db, TimeProvider clock, CancellationToken ct = default)
     {
-        if (await db.Clubs.AnyAsync(c => c.Id == ClubA, ct))
+        if (await db.Clubs.IgnoreQueryFilters().AnyAsync(c => c.Id == ClubA, ct))
             return;
 
         var now = clock.GetUtcNow();

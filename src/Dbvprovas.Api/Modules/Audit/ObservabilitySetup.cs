@@ -24,11 +24,16 @@ public static class ObservabilitySetup
         // D-116
         builder.Logging.EnableRedaction();
         builder.Services.AddRedaction(r => r.SetRedactor<ErasingRedactor>(DataTaxonomy.PersonalData));
+        builder.Services.ProtectLogInputs();
 
         // D-115
         var telemetry = builder.Services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService("dbvprovas-api"))
-            .WithTracing(t => t.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddNpgsql())
+            .WithTracing(t => t.AddAspNetCoreInstrumentation(options =>
+            {
+                options.EnrichWithHttpRequest = (activity, request) => HttpTracePrivacy.Protect(activity, request.HttpContext, response: false);
+                options.EnrichWithHttpResponse = (activity, response) => HttpTracePrivacy.Protect(activity, response.HttpContext, response: true);
+            }).AddHttpClientInstrumentation().AddNpgsql())
             .WithMetrics(m => m.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation());
         if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
             telemetry.WithLogging().UseOtlpExporter();

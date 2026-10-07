@@ -9,13 +9,13 @@ public sealed class SchemaTests(PostgresFixture db)
     public async Task Schema_enables_rls_and_app_role_cannot_bypass_it()
     {
         var rls = await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
-            "SELECT count(*) FROM pg_class WHERE relname IN ('memberships', 'persons') AND relrowsecurity");
+            "SELECT count(*) FROM pg_class WHERE relname IN ('clubs', 'memberships', 'persons') AND relrowsecurity");
         var bypass = await OwnerSql.ScalarAsync<bool>(db.OwnerConnectionString,
             "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'dbv_app'");
         var owner = await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
             "SELECT tableowner::text FROM pg_tables WHERE tablename = 'memberships'");
 
-        Assert.Equal(2, rls);
+        Assert.Equal(3, rls);
         Assert.False(bypass);
         Assert.Equal("dbv_owner", owner);
     }
