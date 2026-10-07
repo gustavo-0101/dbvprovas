@@ -23,7 +23,7 @@ if (options.Count == 0)
 string[] terms = [];
 if (!ci)
 {
-    var termsFile = Git.Run("config", "--get", "pc16.termsFile").Trim();
+    var termsFile = Git.Run(allowFailure: true, "config", "--get", "pc16.termsFile").Trim();
     if (termsFile.Length == 0 || !File.Exists(termsFile))
     {
         Console.Error.WriteLine("pc16: lista local não configurada. Rode scripts/setup-dev.ps1 -TermsFile <caminho> ou git config pc16.termsFile <caminho>.");
@@ -31,31 +31,45 @@ if (!ci)
     }
 
     terms = Checker.LoadTerms(File.ReadAllLines(termsFile, Encoding.UTF8));
+    if (terms.Length == 0)
+    {
+        Console.Error.WriteLine("pc16: lista local vazia. Ela precisa ter ao menos um termo.");
+        return 2;
+    }
 }
 
 var checker = new Checker(terms);
 List<Finding> findings;
-switch (options[0])
+try
 {
-    case "staged":
-        findings = Git.Lines("diff", "--cached", "--name-only", "--diff-filter=ACMR")
-            .SelectMany(path => checker.CheckFile(path, Git.Run("show", $":{path}")))
-            .ToList();
-        break;
-    case "all":
-        findings = Git.Lines("ls-files")
-            .SelectMany(path => checker.CheckFile(path, File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : ""))
-            .ToList();
-        break;
-    case "message" when options.Count > 1:
-        findings = checker.CheckText("mensagem do commit", File.ReadAllText(options[1], Encoding.UTF8)).ToList();
-        break;
-    case "text":
-        using (var reader = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8))
-            findings = checker.CheckText("texto", reader.ReadToEnd()).ToList();
-        break;
-    default:
-        return Usage();
+    switch (options[0])
+    {
+        case "staged":
+            findings = Git.Lines("diff", "--cached", "--name-only", "--diff-filter=ACMR")
+                .SelectMany(path => checker.CheckFile(path, Git.Run("show", $":{path}")))
+                .ToList();
+            break;
+        case "all":
+            findings = Git.Lines("ls-files")
+                .SelectMany(path => checker.CheckFile(path, File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : ""))
+                .ToList();
+            break;
+        case "message" when options.Count > 1:
+            findings = checker.CheckText("mensagem do commit", File.ReadAllText(options[1], Encoding.UTF8)).ToList();
+            break;
+        case "text":
+            using (var reader = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8))
+                findings = checker.CheckText("texto", reader.ReadToEnd()).ToList();
+            break;
+        default:
+            return Usage();
+    }
+}
+catch (GitFailure)
+{
+    // Falha fechada: sem saída do git não há verificação (nunca vira "sem achados").
+    Console.Error.WriteLine("pc16: falha ao consultar o git; nada foi verificado.");
+    return 2;
 }
 
 foreach (var finding in findings)
@@ -67,6 +81,8 @@ static int Usage()
     Console.Error.WriteLine("uso: dotnet run --file tools/pc16-check.cs -- staged|all|text|message <arquivo> [--ci]");
     return 2;
 }
+
+sealed class GitFailure : Exception;
 
 sealed record Finding(string Where, int Line, string Rule);
 
@@ -88,13 +104,18 @@ sealed partial class Checker(string[] terms)
 
     // Caminhos de docs privados, de forma estrutural (D-121): "docs/…" ou "specs/…" fora de URLs,
     // e os arquivos de instrução de agentes. Os nomes específicos ficam só na lista local.
-    [GeneratedRegex(@"(?i)(?<![\w/.-])(?:docs|specs)/[\w.-]+|\b(?:AGENTS|CLAUDE)\.md\b")]
+    // Aceita prefixos relativos (./, ../, ~/) e as duas barras; URLs são removidas antes (ver Url).
+    [GeneratedRegex(@"(?i)(?:(?<![\w/\\.~-])|(?<=(?:^|[\s(\[""'`])(?:(?:\.\.|\.|~)[/\\])+))(?:docs|specs)[/\\][\w.-]+|\b(?:AGENTS|CLAUDE)\.md\b")]
     private static partial Regex PrivateDoc();
+
+    [GeneratedRegex(@"[A-Za-z][A-Za-z0-9+.-]*://\S+")]
+    private static partial Regex Url();
 
     public static string[] LoadTerms(IEnumerable<string> lines) =>
         lines.Select(line => line.Trim())
             .Where(line => line.Length > 0 && !line.StartsWith('#'))
             .Select(Normalize)
+            .Where(term => term.Length > 0)
             .Distinct()
             .ToArray();
 
@@ -124,7 +145,7 @@ sealed partial class Checker(string[] terms)
             {
                 if (Email().Matches(line).Any(m => !IsAllowed(m.Value, m.Groups["domain"].Value)))
                     yield return new(where, i + 1, "email-fora-dos-dominios-reservados");
-                if (PrivateDoc().IsMatch(line))
+                if (PrivateDoc().IsMatch(Url().Replace(line, " ")))
                     yield return new(where, i + 1, "doc-privado");
             }
 
@@ -160,7 +181,9 @@ sealed partial class Checker(string[] terms)
 
 static class Git
 {
-    public static string Run(params string[] args)
+    public static string Run(params string[] args) => Run(false, args);
+
+    public static string Run(bool allowFailure, params string[] args)
     {
         var info = new ProcessStartInfo("git")
         {
@@ -174,10 +197,13 @@ static class Git
         foreach (var arg in args)
             info.ArgumentList.Add(arg);
 
-        using var process = Process.Start(info) ?? throw new InvalidOperationException("git not found.");
+        using var process = Process.Start(info) ?? throw new GitFailure();
+        var error = process.StandardError.ReadToEndAsync();
         var output = process.StandardOutput.ReadToEnd();
-        process.StandardError.ReadToEnd();
+        error.Wait();
         process.WaitForExit();
+        if (process.ExitCode != 0 && !allowFailure)
+            throw new GitFailure();
         return output;
     }
 

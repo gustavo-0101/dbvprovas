@@ -33,7 +33,7 @@ public sealed class Pc16CheckTests
     [Fact]
     public async Task CA_PRV_002_Message_mode_blocks_email_in_commit_message()
     {
-        var terms = await Pc16.WriteTermsFileAsync();
+        var terms = await Pc16.WriteTermsFileAsync("termo ficticio zzz");
         await using var repo = await TempRepo.CreateAsync(terms);
         var message = Path.Combine(repo.Dir, "MSG");
         await File.WriteAllTextAsync(message, $"Contato {Pc16.RealLookingEmail()}\n");
@@ -87,7 +87,7 @@ public sealed class Pc16CheckTests
     [Fact]
     public async Task CA_PRV_005_Verifier_blocks_files_in_private_doc_folders()
     {
-        var terms = await Pc16.WriteTermsFileAsync();
+        var terms = await Pc16.WriteTermsFileAsync("termo ficticio zzz");
         await using var repo = await TempRepo.CreateAsync(terms);
         await repo.WriteAndStageAsync("docs/nota.md", "texto comum\n");
         await repo.WriteAndStageAsync("specs/exemplo.md", "texto comum\n");
@@ -120,5 +120,73 @@ public sealed class Pc16CheckTests
         var result = await Pc16.RunAsync(Neutral, text + "\n", "text", "--ci");
 
         Assert.Equal(0, result.ExitCode);
+    }
+
+    [Theory]
+    [InlineData("Ver ../docs/exemplo.md")]
+    [InlineData("Ver ./specs/R9/exemplo.md")]
+    [InlineData("Ver ~/docs/exemplo.md")]
+    [InlineData(@"Ver docs\exemplo.md")]
+    public async Task CA_PRV_005_Verifier_blocks_relative_and_windows_doc_paths(string text)
+    {
+        var result = await Pc16.RunAsync(Neutral, text + "\n", "text", "--ci");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("pc16: texto:1: doc-privado", result.StdErr);
+    }
+
+    [Theory]
+    [InlineData("Pasta docs/ sem nada depois")]
+    [InlineData("https://github.com/dotnet/docs/blob/main/README.md")]
+    public async Task CA_PRV_005_Verifier_ignores_bare_folder_and_urls(string text)
+    {
+        var result = await Pc16.RunAsync(Neutral, text + "\n", "text", "--ci");
+
+        Assert.Equal(0, result.ExitCode);
+    }
+
+    [Theory]
+    [InlineData("staged")]
+    [InlineData("all")]
+    public async Task CA_PRV_002_Verifier_fails_closed_when_git_fails(string mode)
+    {
+        var dir = Directory.CreateTempSubdirectory("pc16-nogit-").FullName;
+        try
+        {
+            var result = await Pc16.RunAsync(dir, null, mode, "--ci");
+
+            Assert.Equal(2, result.ExitCode);
+            Assert.Contains("falha ao consultar o git", result.StdErr);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CA_PRV_003_Verifier_ignores_term_that_normalizes_to_empty()
+    {
+        // Um termo só com marca de acento vira vazio ao normalizar; não pode casar com toda linha.
+        var terms = await Pc16.WriteTermsFileAsync("́", "termo ficticio zzz");
+        await using var repo = await TempRepo.CreateAsync(terms);
+        await repo.WriteAndStageAsync("nota.txt", "texto comum\n");
+
+        var result = await Pc16.RunAsync(repo.Dir, null, "staged");
+
+        Assert.Equal(0, result.ExitCode);
+    }
+
+    [Fact]
+    public async Task CA_PRV_003_Verifier_fails_closed_when_local_list_has_no_terms()
+    {
+        var terms = await Pc16.WriteTermsFileAsync();
+        await using var repo = await TempRepo.CreateAsync(terms);
+        await repo.WriteAndStageAsync("nota.txt", "texto comum\n");
+
+        var result = await Pc16.RunAsync(repo.Dir, null, "staged");
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("lista local vazia", result.StdErr);
     }
 }
