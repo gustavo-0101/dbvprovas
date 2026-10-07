@@ -1,0 +1,6 @@
+#!/bin/sh
+# Verificação da mensagem do commit (PC-16, D-109).
+set -e
+hooks_dir="$(cd "$(dirname "$0")" && pwd)"
+gitleaks stdin --redact --no-banner < "$1"
+dotnet run --file "$hooks_dir/../tools/pc16-check.cs" -- message "$1"
