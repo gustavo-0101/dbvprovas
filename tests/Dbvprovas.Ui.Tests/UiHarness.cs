@@ -1,4 +1,5 @@
 using System.Net;
+using Bunit.TestDoubles;
 using Dbvprovas.Contracts;
 using Dbvprovas.Ui.Services;
 using Microsoft.AspNetCore.Components;
@@ -22,6 +23,9 @@ internal sealed class UiHarness : IDisposable
     public StubApi Api { get; } = new();
     public MemorySessionStore Store { get; } = new();
     public NavigationManager Navigation => Context.Services.GetRequiredService<NavigationManager>();
+
+    // A última navegação pedida pela tela; "replace" evita que o Voltar fique preso no clube.
+    public NavigationHistory LastNavigation => ((BunitNavigationManager)Navigation).History.First();
 
     public void ServeClubAguias()
     {

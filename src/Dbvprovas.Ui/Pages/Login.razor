@@ -41,7 +41,7 @@
         await Session.LoadAsync();
         if (Session.Token is not null)
         {
-            Navigation.NavigateTo("club");
+            Navigation.NavigateTo("club", replace: true);
             return;
         }
 
@@ -73,6 +73,6 @@
         }
 
         await Session.SignInAsync(result.Value!.AccessToken);
-        Navigation.NavigateTo("club");
+        Navigation.NavigateTo("club", replace: true);
     }
 }

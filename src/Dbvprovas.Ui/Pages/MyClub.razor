@@ -99,6 +99,6 @@
     private async Task SwitchUserAsync()
     {
         await Session.SignOutAsync();
-        Navigation.NavigateTo("");
+        Navigation.NavigateTo("", replace: true);
     }
 }

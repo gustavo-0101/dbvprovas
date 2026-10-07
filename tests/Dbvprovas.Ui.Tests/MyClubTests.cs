@@ -36,6 +36,7 @@ public sealed class MyClubTests
         {
             Assert.Equal("http://localhost/", ui.Navigation.Uri);
             Assert.Null(ui.Store.Token);
+            Assert.True(ui.LastNavigation.Options.ReplaceHistoryEntry); // substitui a entrada: o Voltar não fica preso no clube
         });
     }
 
@@ -94,6 +95,7 @@ public sealed class MyClubTests
         {
             Assert.Equal("http://localhost/", ui.Navigation.Uri);
             Assert.Null(ui.Store.Token);
+            Assert.True(ui.LastNavigation.Options.ReplaceHistoryEntry); // substitui a entrada: o Voltar não fica preso no clube
         });
     }
 

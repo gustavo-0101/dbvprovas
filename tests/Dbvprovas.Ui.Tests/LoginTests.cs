@@ -25,6 +25,7 @@ public sealed class LoginTests
 
         page.WaitForAssertion(() => Assert.Equal("http://localhost/club", ui.Navigation.Uri));
         Assert.Equal("token-da-aurora", ui.Store.Token);
+        Assert.True(ui.LastNavigation.Options.ReplaceHistoryEntry); // substitui a entrada: o Voltar não fica preso no clube
     }
 
     [Fact]
@@ -84,5 +85,6 @@ public sealed class LoginTests
 
         page.WaitForAssertion(() => Assert.Equal("http://localhost/club", ui.Navigation.Uri));
         Assert.DoesNotContain(ui.Api.Requests, r => r.StartsWith("GET /api/dev/accounts", StringComparison.Ordinal));
+        Assert.True(ui.LastNavigation.Options.ReplaceHistoryEntry); // substitui a entrada: o Voltar não fica preso no clube
     }
 }
