@@ -10,6 +10,7 @@ builder.Services.AddDatabase(); // RNF-TEN-001
 builder.AddSessions(); // D-120, RNF-TEN-002
 builder.Services.AddHealth(); // RF-AUD-001
 builder.Services.AddProblemDetails(); // RF-AUD-002
+builder.Services.AddOpenApi(); // D-100
 
 var app = builder.Build();
 
@@ -32,6 +33,7 @@ app.MapClubs();
 if (app.Environment.IsDevelopment())
 {
     app.MapDevLogin();
+    app.MapOpenApi().AllowAnonymous();
     await DevDatabase.InitializeAsync(app.Services); // RF-TEN-003
 }
 
