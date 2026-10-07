@@ -48,7 +48,7 @@ public sealed class DevLoginTests(PostgresFixture db)
         var empty = await db.CreateMigratedDatabaseAsync("dbv_ca_id_001");
         await using var dev = new ApiFactory(db, "Development");
         var devToken = await dev.SignInAsync(DevSeed.AuroraAccount);
-        await using var production = new ApiFactory(db, "Production", empty.App);
+        await using var production = new ApiFactory(db, "Production", empty.App, empty.Owner);
         using var client = production.CreateClient();
 
         using var accounts = await client.GetAsync(ApiRoutes.DevAccounts);

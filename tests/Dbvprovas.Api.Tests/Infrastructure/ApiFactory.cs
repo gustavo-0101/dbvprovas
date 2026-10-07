@@ -6,14 +6,15 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Dbvprovas.Api.Tests.Infrastructure;
 
-public sealed class ApiFactory(PostgresFixture db, string environment, string? appConnectionString = null)
+public sealed class ApiFactory(
+    PostgresFixture db, string environment, string? appConnectionString = null, string? ownerConnectionString = null)
     : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(environment);
         builder.UseSetting("ConnectionStrings:App", appConnectionString ?? db.AppConnectionString);
-        builder.UseSetting("ConnectionStrings:Owner", db.OwnerConnectionString);
+        builder.UseSetting("ConnectionStrings:Owner", ownerConnectionString ?? db.OwnerConnectionString);
     }
 
     public HttpClient CreateClientWithToken(string token)
