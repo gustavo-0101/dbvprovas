@@ -28,11 +28,15 @@ public sealed class MyClubTests
     {
         using var ui = new UiHarness();
         ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.Unauthorized);
+        ui.Navigation.NavigateTo("club"); // parte de /club, para a volta ao início ser observável
 
         var page = ui.Context.Render<MyClub>();
 
-        page.WaitForAssertion(() => Assert.Equal("http://localhost/", ui.Navigation.Uri));
-        Assert.Null(ui.Store.Token);
+        page.WaitForAssertion(() =>
+        {
+            Assert.Equal("http://localhost/", ui.Navigation.Uri);
+            Assert.Null(ui.Store.Token);
+        });
     }
 
     [Fact]
@@ -44,6 +48,23 @@ public sealed class MyClubTests
         var page = ui.Context.Render<MyClub>();
 
         page.WaitForAssertion(() => Assert.Contains("Clube não encontrado.", page.Markup));
+    }
+
+    // Resposta 200 que não serve (página de proxy, corpo nulo) vira "sem servidor", sem detalhe técnico (RF-TEN-004).
+    [Theory]
+    [InlineData("text/html", "<html>portal de acesso</html>")]
+    [InlineData("application/json", "null")]
+    public void My_club_shows_retry_when_success_body_is_unusable(string mediaType, string body)
+    {
+        using var ui = new UiHarness();
+        ui.Api.RespondText(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, body, mediaType);
+
+        var page = ui.Context.Render<MyClub>();
+
+        page.WaitForAssertion(() => Assert.Contains("Não foi possível falar com o servidor.", page.Markup));
+        Assert.NotNull(page.Find("button.retry"));
+        Assert.DoesNotContain("portal", page.Markup);
+        Assert.DoesNotContain("Exception", page.Markup);
     }
 
     // Conta sem participação ativa (RF-TEN-001).
@@ -63,13 +84,17 @@ public sealed class MyClubTests
     {
         using var ui = new UiHarness();
         ui.ServeClubAguias();
+        ui.Navigation.NavigateTo("club"); // parte de /club, para a volta ao início ser observável
         var page = ui.Context.Render<MyClub>();
         page.WaitForAssertion(() => Assert.Equal("Clube Águias", page.Find("h1").TextContent));
 
         page.Find("button.switch-user").Click();
 
-        page.WaitForAssertion(() => Assert.Equal("http://localhost/", ui.Navigation.Uri));
-        Assert.Null(ui.Store.Token);
+        page.WaitForAssertion(() =>
+        {
+            Assert.Equal("http://localhost/", ui.Navigation.Uri);
+            Assert.Null(ui.Store.Token);
+        });
     }
 
     // Os pedidos levam a sessão guardada (RF-TEN-001).

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Dbvprovas.Contracts;
 
 namespace Dbvprovas.Ui.Services;
@@ -52,7 +53,11 @@ public sealed class ApiClient(HttpClient http, SessionState session)
 
             using var response = await http.SendAsync(request);
             if (response.IsSuccessStatusCode)
-                return ApiResult<T>.Ok((await response.Content.ReadFromJsonAsync<T>())!);
+            {
+                // Um 2xx com corpo que não serve (página de proxy, corpo nulo) é o mesmo que sem servidor.
+                var value = await response.Content.ReadFromJsonAsync<T>();
+                return value is null ? ApiResult<T>.Fail(ApiError.Unavailable) : ApiResult<T>.Ok(value);
+            }
 
             return ApiResult<T>.Fail(response.StatusCode switch
             {
@@ -61,7 +66,7 @@ public sealed class ApiClient(HttpClient http, SessionState session)
                 _ => ApiError.Unavailable,
             });
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException)
         {
             return ApiResult<T>.Fail(ApiError.Unavailable);
         }

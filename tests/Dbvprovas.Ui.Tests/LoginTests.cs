@@ -47,12 +47,31 @@ public sealed class LoginTests
 
         var page = ui.Context.Render<Login>();
         page.WaitForAssertion(() => Assert.Contains("Não foi possível falar com o servidor.", page.Markup));
+        Assert.DoesNotContain("offline", page.Markup);
 
         ui.Api.Offline = false;
         ui.Api.Respond(HttpMethod.Get, ApiRoutes.DevAccounts, HttpStatusCode.OK, Accounts);
         page.Find("button.retry").Click();
 
         page.WaitForAssertion(() => Assert.Equal(2, page.FindAll("ul.accounts button").Count));
+    }
+
+    // Falha ao criar a sessão: a tela avisa, não guarda sessão e não sai da entrada (RF-TEN-004).
+    [Fact]
+    public void Login_shows_retry_when_sign_in_fails()
+    {
+        using var ui = new UiHarness(token: null);
+        ui.Api.Respond(HttpMethod.Get, ApiRoutes.DevAccounts, HttpStatusCode.OK, Accounts);
+        ui.Api.Respond(HttpMethod.Post, ApiRoutes.DevSessions, HttpStatusCode.InternalServerError);
+
+        var page = ui.Context.Render<Login>();
+        page.WaitForAssertion(() => Assert.Equal(2, page.FindAll("ul.accounts button").Count));
+        page.FindAll("ul.accounts button")[0].Click();
+
+        page.WaitForAssertion(() => Assert.Contains("Não foi possível falar com o servidor.", page.Markup));
+        Assert.NotNull(page.Find("button.retry"));
+        Assert.Null(ui.Store.Token);
+        Assert.Equal("http://localhost/", ui.Navigation.Uri);
     }
 
     // Com sessão guardada, a entrada vai direto para o clube (RF-ID-001).

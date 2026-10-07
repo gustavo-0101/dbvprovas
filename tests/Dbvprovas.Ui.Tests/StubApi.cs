@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 
 namespace Dbvprovas.Ui.Tests;
 
@@ -18,6 +19,13 @@ internal sealed class StubApi : HttpMessageHandler
             if (body is not null)
                 response.Content = JsonContent.Create(body);
             return response;
+        };
+
+    // Corpo cru, para respostas que não são o JSON esperado.
+    public void RespondText(HttpMethod method, string path, HttpStatusCode status, string body, string mediaType) =>
+        _routes[$"{method} /{path}"] = () => new HttpResponseMessage(status)
+        {
+            Content = new StringContent(body, Encoding.UTF8, mediaType),
         };
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
