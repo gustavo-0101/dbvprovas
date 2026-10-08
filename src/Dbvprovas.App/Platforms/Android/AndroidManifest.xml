@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Sem backup automático: a sessão e, no futuro, dados de menores não saem do aparelho (PC-02). -->
+  <!--
+    Nada do app sai do aparelho por backup: a sessão e, no futuro, dados de menores ficam só nele (PC-02).
+    allowBackup="false" desliga o backup na nuvem, mas com targetSdk 31 ou mais ele não desliga a transferência
+    entre aparelhos em alguns fabricantes (https://developer.android.com/identity/data/autobackup).
+    Por isso, no Android 12 ou mais novo, dataExtractionRules exclui tudo das duas modalidades.
+  -->
   <application
       android:allowBackup="false"
+      android:dataExtractionRules="@xml/data_extraction_rules"
       android:icon="@mipmap/appicon"
       android:roundIcon="@mipmap/appicon_round"
       android:supportsRtl="true"

@@ -1,3 +1,4 @@
+using Android.Content;
 using Dbvprovas.Ui.Services;
 
 namespace Dbvprovas.App;
@@ -8,6 +9,11 @@ namespace Dbvprovas.App;
 internal sealed class SecureSessionStore : ISessionStore
 {
     private const string Key = "dbvprovas.session";
+
+    // Arquivo de preferências por baixo do SecureStorage do MAUI 10.0.110, sempre <ApplicationId>.microsoft.maui.essentials.preferences
+    // (https://github.com/dotnet/maui/blob/10.0.110/src/Essentials/src/SecureStorage/SecureStorage.android.cs).
+    // O MAUI abre um EncryptedSharedPreferences novo a cada chamada, então apagar o arquivo já recupera, sem reiniciar o app.
+    private static string PreferencesFile => $"{AppInfo.Current.PackageName}.microsoft.maui.essentials.preferences";
 
     public async Task<string?> GetAsync()
     {
@@ -40,9 +46,9 @@ internal sealed class SecureSessionStore : ISessionStore
         {
             SecureStorage.Default.Remove(Key);
         }
-        catch (Exception) // segunda tentativa; se RemoveAll também falhar, a falha sobe (RNF-TEN-004)
+        catch (Exception) // chaves irrecuperáveis: o Remove também falha, então apaga o arquivo por baixo; se isso falhar, sobe (RNF-TEN-004)
         {
-            SecureStorage.Default.RemoveAll();
+            WipePreferencesFile();
         }
 
         return Task.CompletedTask;
@@ -57,6 +63,22 @@ internal sealed class SecureSessionStore : ISessionStore
         }
         catch (Exception) // nada em log (RNF-PRV-001); o chamador já segue sem sessão
         {
+            try
+            {
+                WipePreferencesFile();
+            }
+            catch (Exception) // idem
+            {
+            }
         }
+    }
+
+    // Limpeza síncrona e independente do EncryptedSharedPreferences, que é o que falha com chaves irrecuperáveis.
+    private static void WipePreferencesFile()
+    {
+        var context = Android.App.Application.Context;
+        using var editor = context.GetSharedPreferences(PreferencesFile, FileCreationMode.Private)?.Edit();
+        if (editor?.Clear()?.Commit() != true)
+            throw new InvalidOperationException("Could not clear the secure storage file.");
     }
 }
