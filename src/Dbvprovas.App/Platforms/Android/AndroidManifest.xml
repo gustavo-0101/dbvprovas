@@ -12,7 +12,13 @@
       android:icon="@mipmap/appicon"
       android:roundIcon="@mipmap/appicon_round"
       android:supportsRtl="true"
-      android:networkSecurityConfig="@xml/network_security_config" />
+      android:networkSecurityConfig="@xml/network_security_config">
+    <!--
+      Sem telemetria remota no front (D-115, RNF-PRV-006): a WebView pode enviar diagnóstico anônimo ao Google
+      por app que a instancia; esta marca desliga o envio (https://developer.android.com/develop/ui/views/layout/webapps/managing-webview).
+    -->
+    <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
+  </application>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.INTERNET" />
 </manifest>
