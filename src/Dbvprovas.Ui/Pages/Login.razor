@@ -1,0 +1,78 @@
+@page "/"
+@inject ApiClient Api
+@inject SessionState Session
+@inject NavigationManager Navigation
+
+<PageTitle>Entrar</PageTitle>
+
+<h1>Entrar</h1>
+
+@switch (state)
+{
+    case State.Loading:
+        <p>Carregando…</p>
+        break;
+    case State.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAccountsAsync">Tentar de novo</button>
+        break;
+    case State.NoDevLogin:
+        <p>Entrar ainda não está disponível neste ambiente.</p>
+        break;
+    case State.Ready:
+        <p>Escolha uma conta de desenvolvimento:</p>
+        <ul class="accounts">
+            @foreach (var account in accounts)
+            {
+                <li><button @onclick="() => SignInAsync(account.AccountId)">@account.Label</button></li>
+            }
+        </ul>
+        break;
+}
+
+@code {
+    private enum State { Loading, Ready, NoDevLogin, Unavailable }
+
+    private State state = State.Loading;
+    private IReadOnlyList<DevAccountResponse> accounts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        if (Session.Token is not null)
+        {
+            Navigation.NavigateTo("club", replace: true);
+            return;
+        }
+
+        await LoadAccountsAsync();
+    }
+
+    private async Task LoadAccountsAsync()
+    {
+        state = State.Loading;
+        var result = await Api.GetDevAccountsAsync();
+        if (result.IsOk)
+        {
+            accounts = result.Value!;
+            state = State.Ready;
+            return;
+        }
+
+        // Sem a rota de dev, o ambiente não oferece o login de desenvolvimento (RF-ID-003).
+        state = result.Error == ApiError.NotFound ? State.NoDevLogin : State.Unavailable;
+    }
+
+    private async Task SignInAsync(Guid accountId)
+    {
+        var result = await Api.CreateDevSessionAsync(accountId);
+        if (!result.IsOk)
+        {
+            state = State.Unavailable;
+            return;
+        }
+
+        await Session.SignInAsync(result.Value!.AccessToken);
+        Navigation.NavigateTo("club", replace: true);
+    }
+}

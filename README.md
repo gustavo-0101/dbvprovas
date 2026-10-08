@@ -27,7 +27,7 @@ docker compose up -d --wait
 dotnet run --project src/Dbvprovas.Api --launch-profile http
 ```
 
-- API: http://localhost:5080. Em dev, ela aplica as migrations e um seed fictício ao subir.
+- API e site: http://localhost:5080 (mesma origem). Em dev, a API aplica as migrations e um seed fictício ao subir, e o site oferece a entrada com as contas fictícias.
 - Saúde: http://localhost:5080/health/ready
 - Logs, traces e métricas (Aspire Dashboard): http://localhost:18888
 
@@ -36,6 +36,9 @@ dotnet run --project src/Dbvprovas.Api --launch-profile http
 ```powershell
 dotnet test tests/Dbvprovas.Api.Tests      # Postgres em contêiner (Testcontainers)
 dotnet test tests/Dbvprovas.Tools.Tests    # verificador e hooks (exige o gitleaks)
+dotnet test tests/Dbvprovas.Ui.Tests       # componentes (bUnit)
+dotnet build tests/Dbvprovas.Web.E2E; pwsh tests/Dbvprovas.Web.E2E/bin/Debug/net10.0/playwright.ps1 install chromium
+dotnet test tests/Dbvprovas.Web.E2E --no-build   # caminho feliz no navegador (Playwright); também exige o Docker (Testcontainers)
 ```
 
 ## Licença

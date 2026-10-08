@@ -35,12 +35,16 @@ public sealed class HttpPrivacyTests(PostgresFixture db)
             ($"/invalid/{percentEncoded}", HttpStatusCode.NotFound),
         };
         using var json = new StringWriter();
+        var console = TextWriter.Synchronized(json);
         var original = Console.Out;
         using var traces = new ActivityCapture();
         var captured = new List<CapturedLog>();
-        Console.SetOut(TextWriter.Synchronized(json));
+        string output;
+        Console.SetOut(console);
         try
         {
+            // O lock da leitura só vale se o Console.Out for este mesmo wrapper.
+            Assert.Same(console, Console.Out);
             await using var api = new ApiFactory(db, "Production") { UseTestAuthentication = true };
             await using var host = api.WithWebHostBuilder(builder => builder.ConfigureLogging(logging =>
                 logging.AddFilter<ConsoleLoggerProvider>(null, LogLevel.Trace)));
@@ -57,6 +61,10 @@ public sealed class HttpPrivacyTests(PostgresFixture db)
                 Assert.Equal(expected, response.StatusCode);
                 await response.Content.ReadAsStringAsync();
             }
+            // RNF-PRV-001, CA-AUD-004: a fila do logger é assíncrona e FIFO; a linha da categoria-barreira prova que as
+            // anteriores já foram escritas, e a leitura toma o lock do wrapper para não correr com as escritas seguintes.
+            host.Services.GetRequiredService<ILoggerFactory>().CreateLogger(BarrierCategory).LogInformation("barrier");
+            output = await WaitForCaptureAsync(console, json, requests.Length);
             captured.AddRange(api.Logs.Logs);
         }
         finally
@@ -64,11 +72,13 @@ public sealed class HttpPrivacyTests(PostgresFixture db)
             Console.SetOut(original);
         }
 
-        var output = json.ToString();
         Assert.NotEmpty(output);
+        Assert.True(output.Contains(BarrierCategory, StringComparison.Ordinal), "The console barrier line never reached the capture.");
         var records = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => JsonDocument.Parse(line)).ToArray();
         try
         {
+            Assert.Equal(requests.Length, records.Count(record => IsHostingEvent(record.RootElement, 1)));
+            Assert.Equal(requests.Length, records.Count(record => IsHostingEvent(record.RootElement, 2)));
             Assert.Contains(records, record => record.RootElement.GetProperty("Category").GetString() == "Microsoft.AspNetCore.Hosting.Diagnostics"
                 && record.RootElement.GetProperty("EventId").GetInt32() == 1);
             Assert.Contains(records, record => record.RootElement.GetProperty("State").TryGetProperty("StatusCode", out var status) && status.GetInt32() == 404);
@@ -97,6 +107,40 @@ public sealed class HttpPrivacyTests(PostgresFixture db)
         Assert.DoesNotContain(traces.Items, item => item.Contains(sentinel, StringComparison.Ordinal));
         Assert.DoesNotContain(traces.Items, item => item.Contains(percentEncoded, StringComparison.Ordinal));
     }
+
+    private const string BarrierCategory = "Dbvprovas.Tests.ConsoleBarrier";
+
+    // RNF-PRV-001, CA-AUD-004: relê sob o lock até a barreira e as linhas de cada requisição chegarem, com prazo.
+    private static async Task<string> WaitForCaptureAsync(TextWriter console, StringWriter json, int requests)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            string output;
+            lock (console)
+                output = json.ToString();
+            var records = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => JsonDocument.Parse(line)).ToArray();
+            try
+            {
+                if (output.Contains(BarrierCategory, StringComparison.Ordinal)
+                    && records.Count(record => IsHostingEvent(record.RootElement, 1)) == requests
+                    && records.Count(record => IsHostingEvent(record.RootElement, 2)) == requests)
+                    return output;
+            }
+            finally
+            {
+                foreach (var record in records)
+                    record.Dispose();
+            }
+            if (elapsed.Elapsed > TimeSpan.FromSeconds(10))
+                return output;
+            await Task.Delay(10);
+        }
+    }
+
+    private static bool IsHostingEvent(JsonElement record, int eventId) =>
+        record.GetProperty("Category").GetString() == "Microsoft.AspNetCore.Hosting.Diagnostics"
+        && record.GetProperty("EventId").GetInt32() == eventId;
 
     // RNF-PRV-001
     [Fact]

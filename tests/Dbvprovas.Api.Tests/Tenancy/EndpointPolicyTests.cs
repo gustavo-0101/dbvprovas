@@ -4,8 +4,11 @@ using Dbvprovas.Api.Tests.Infrastructure;
 using Dbvprovas.Contracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Endpoints;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
+using Microsoft.AspNetCore.StaticAssets;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dbvprovas.Api.Tests.Tenancy;
@@ -21,15 +24,38 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         "/openapi/{documentName}.json",
     ];
 
-    [Fact]
-    public async Task CA_TEN_006_Every_endpoint_has_explicit_policy()
+    // Páginas do site e o endpoint de redirecionamento do Blazor (D-112). Os arquivos estáticos entram
+    // pelo marcador do MapStaticAssets e a lista de recursos pelo mapa de importação das páginas;
+    // nunca por prefixo de caminho. A rota de página só vale com o marcador de componente do
+    // MapRazorComponents; o redirecionamento não tem marcador próprio e fica pela rota exata.
+    private static readonly string[] SitePageRoutes =
+    [
+        "/",
+        "/club",
+        "/not-found",
+    ];
+
+    private static readonly string[] AnonymousSiteRoutes = [.. SitePageRoutes, "/_framework/opaque-redirect"];
+
+    private static readonly string[] ResourceCollectionNames =
+    [
+        "_framework/resource-collection.js",
+        "_framework/resource-collection.js.gz",
+    ];
+
+    // O AllowAnonymous do site vale em qualquer ambiente, então a varredura roda nos dois.
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Production")]
+    public async Task CA_TEN_006_Every_endpoint_has_explicit_policy(string environment)
     {
-        await using var api = new ApiFactory(db, "Development");
-        var endpoints = api.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().ToList();
+        await using var api = new ApiFactory(db, environment);
+        var endpoints = RouteEndpoints(api);
 
         Assert.NotEmpty(endpoints);
+        var allowed = AnonymousRoutes(endpoints);
         foreach (var endpoint in endpoints)
-            Assert.True(HasExplicitPolicy(endpoint));
+            Assert.True(HasExplicitPolicy(endpoint, allowed), $"Endpoint without explicit policy: {endpoint.RoutePattern.RawText}");
     }
 
     [Fact]
@@ -37,17 +63,175 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
     {
         var builder = new RouteEndpointBuilder(_ => Task.CompletedTask, RoutePatternFactory.Parse("/export"), 0);
         builder.Metadata.Add(new AllowAnonymousAttribute());
-        Assert.False(HasExplicitPolicy((RouteEndpoint)builder.Build()));
+        Assert.False(HasExplicitPolicy((RouteEndpoint)builder.Build(), FixedRoutes()));
     }
 
-    private static bool HasExplicitPolicy(RouteEndpoint endpoint)
+    // O site só abre exceções por rota exata: nada sob /_framework, /_content ou /club entra por prefixo.
+    [Theory]
+    [InlineData("/_framework/export")]
+    [InlineData("/_content/Dbvprovas.Ui/export")]
+    [InlineData("/club/export")]
+    [InlineData("/not-found/export")]
+    public void CA_TEN_006_Anonymous_site_lookalike_is_rejected(string route)
     {
-        var pattern = "/" + endpoint.RoutePattern.RawText!.TrimStart('/');
+        Assert.False(HasExplicitPolicy(AnonymousEndpoint(route), FixedRoutes()));
+    }
+
+    // A rota de página só vale para o endpoint que o MapRazorComponents cria (marcador do componente):
+    // um endpoint anônimo de API mapeado em /, /club ou /not-found não herda a exceção (CA-TEN-006, D-112).
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/club")]
+    [InlineData("/not-found")]
+    public void CA_TEN_006_Anonymous_endpoint_at_page_route_without_component_marker_is_rejected(string route)
+    {
+        Assert.False(HasExplicitPolicy(AnonymousEndpoint(route), FixedRoutes()));
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/club")]
+    [InlineData("/not-found")]
+    public void CA_TEN_006_Anonymous_endpoint_at_page_route_with_component_marker_is_accepted(string route)
+    {
+        Assert.True(HasExplicitPolicy(AnonymousEndpoint(route, new ComponentTypeMetadata(typeof(object))), FixedRoutes()));
+    }
+
+    // O marcador do componente não abre rota nova: ela continua precisando estar na lista.
+    [Fact]
+    public void CA_TEN_006_Component_marker_does_not_allow_a_route_outside_the_allowlist()
+    {
+        Assert.False(HasExplicitPolicy(AnonymousEndpoint("/export", new ComponentTypeMetadata(typeof(object))), FixedRoutes()));
+    }
+
+    // O marcador de arquivo estático vale só quando a rota do descritor é a do endpoint.
+    [Fact]
+    public void CA_TEN_006_Static_asset_marker_must_match_the_endpoint_route()
+    {
+        var matching = AnonymousEndpoint("/_framework/export", new StaticAssetDescriptor { Route = "_framework/export", AssetPath = "export" });
+        var mismatched = AnonymousEndpoint("/_framework/export", new StaticAssetDescriptor { Route = "app.css", AssetPath = "app.css" });
+
+        Assert.True(HasExplicitPolicy(matching, FixedRoutes()));
+        Assert.False(HasExplicitPolicy(mismatched, FixedRoutes()));
+    }
+
+    // A lista de recursos do Blazor tem nome com impressão digital; só os nomes que as páginas declaram
+    // no mapa de importação são aceitos.
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Production")]
+    public async Task CA_TEN_006_Resource_collection_routes_come_from_the_page_import_map(string environment)
+    {
+        await using var api = new ApiFactory(db, environment);
+        var endpoints = RouteEndpoints(api);
+        var allowed = AnonymousRoutes(endpoints);
+
+        var declared = allowed.Where(route => route.StartsWith("/_framework/resource-collection", StringComparison.Ordinal)).ToList();
+
+        Assert.Equal(4, declared.Count);
+        Assert.False(HasExplicitPolicy(AnonymousEndpoint("/_framework/resource-collection.zzzzz.js"), allowed));
+    }
+
+    // O conteúdo do mapa de importação nunca alarga a lista: valor fora da forma do arquivo de recursos é ignorado.
+    [Theory]
+    [InlineData("./_framework/export")]
+    [InlineData("./_framework/resource-collection.abc12.exe")]
+    [InlineData("./_framework/resource-collection.x/export.js")]
+    [InlineData("./_content/Dbvprovas.Ui/app.css")]
+    [InlineData("/_framework/resource-collection.abc12.js")]
+    [InlineData("_framework/resource-collection.abc12.js")]
+    public void CA_TEN_006_Import_map_value_outside_resource_collection_shape_is_ignored(string value)
+    {
+        var page = AnonymousEndpoint("/", ImportMap(("_framework/resource-collection.js", value)));
+
+        var routes = AnonymousRoutes([page]);
+
+        Assert.True(routes.SetEquals(FixedRoutes()));
+    }
+
+    [Fact]
+    public void CA_TEN_006_Import_map_value_with_resource_collection_shape_is_accepted()
+    {
+        var page = AnonymousEndpoint("/", ImportMap(
+            ("_framework/resource-collection.js", "./_framework/resource-collection.abc12.js"),
+            ("_framework/resource-collection.js.gz", "./_framework/resource-collection.abc12.js.gz")));
+
+        var routes = AnonymousRoutes([page]);
+
+        Assert.Contains("/_framework/resource-collection.js", routes);
+        Assert.Contains("/_framework/resource-collection.js.gz", routes);
+        Assert.Contains("/_framework/resource-collection.abc12.js", routes);
+        Assert.Contains("/_framework/resource-collection.abc12.js.gz", routes);
+    }
+
+    private static ImportMapDefinition ImportMap(params (string Name, string Value)[] imports) =>
+        new(imports.ToDictionary(import => import.Name, import => import.Value), scopes: null, integrity: null);
+
+    private static List<RouteEndpoint> RouteEndpoints(ApiFactory api) =>
+        api.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().ToList();
+
+    private static string Route(RouteEndpoint endpoint) => "/" + endpoint.RoutePattern.RawText!.TrimStart('/');
+
+    private static HashSet<string> FixedRoutes() => [.. AnonymousApiRoutes, .. AnonymousSiteRoutes];
+
+    private static HashSet<string> AnonymousRoutes(IEnumerable<RouteEndpoint> endpoints)
+    {
+        var routes = FixedRoutes();
+        var siteImports = endpoints
+            .Where(endpoint => AnonymousSiteRoutes.Contains(Route(endpoint)))
+            .Select(endpoint => endpoint.Metadata.GetMetadata<ImportMapDefinition>()?.Imports)
+            .OfType<IReadOnlyDictionary<string, string>>();
+        foreach (var imports in siteImports)
+        {
+            foreach (var name in ResourceCollectionNames)
+            {
+                if (!imports.TryGetValue(name, out var fingerprinted) || !IsResourceCollectionFile(fingerprinted))
+                    continue;
+                routes.Add("/" + name);
+                routes.Add(fingerprinted[1..]); // "./_framework/..." vira "/_framework/..."
+            }
+        }
+
+        return routes;
+    }
+
+    // Só o arquivo de recursos entra: "./_framework/resource-collection.<impressão>.js" ou ".js.gz", sem subcaminho.
+    private static bool IsResourceCollectionFile(string value)
+    {
+        const string prefix = "./_framework/resource-collection.";
+        return value.StartsWith(prefix, StringComparison.Ordinal)
+            && (value.EndsWith(".js", StringComparison.Ordinal) || value.EndsWith(".js.gz", StringComparison.Ordinal))
+            && !value.AsSpan(prefix.Length).Contains('/');
+    }
+
+    private static RouteEndpoint AnonymousEndpoint(string route, params object[] metadata)
+    {
+        var builder = new RouteEndpointBuilder(_ => Task.CompletedTask, RoutePatternFactory.Parse(route), 0);
+        builder.Metadata.Add(new AllowAnonymousAttribute());
+        foreach (var item in metadata)
+            builder.Metadata.Add(item);
+        return (RouteEndpoint)builder.Build();
+    }
+
+    private static bool HasExplicitPolicy(RouteEndpoint endpoint, IReadOnlySet<string> anonymousRoutes)
+    {
+        var route = Route(endpoint);
         var anonymous = endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null;
         var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
-        return anonymous ? AnonymousApiRoutes.Contains(pattern)
+        return anonymous ? IsAllowedAnonymousRoute(endpoint, route, anonymousRoutes) || IsStaticAsset(endpoint, route)
             : policies.Any(p => !string.IsNullOrWhiteSpace(p.Policy));
     }
+
+    private static bool IsAllowedAnonymousRoute(RouteEndpoint endpoint, string route, IReadOnlySet<string> anonymousRoutes) =>
+        anonymousRoutes.Contains(route) && (!SitePageRoutes.Contains(route) || IsComponentPage(endpoint));
+
+    // O MapRazorComponents põe o tipo do componente em cada endpoint de página que cria.
+    private static bool IsComponentPage(RouteEndpoint endpoint) =>
+        endpoint.Metadata.GetMetadata<ComponentTypeMetadata>() is not null;
+
+    // O MapStaticAssets põe o descritor do arquivo em cada endpoint que cria, com a rota que vira o padrão.
+    private static bool IsStaticAsset(RouteEndpoint endpoint, string route) =>
+        endpoint.Metadata.GetMetadata<StaticAssetDescriptor>() is { } asset && route == "/" + asset.Route.TrimStart('/');
 
     [Fact]
     public async Task CA_TEN_006_Request_without_session_returns_401()
