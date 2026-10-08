@@ -52,7 +52,7 @@ dotnet build src/Dbvprovas.App -t:Run -f net10.0-android
 
 No emulador, o app fala com a API da máquina de dev em `http://10.0.2.2:5080`.
 
-Fumaça com Appium (exige `npm install -g appium@3.8.0` e `appium driver install uiautomator2@8.7.0`):
+Fumaça com Appium (exige `npm install -g appium@3.8.0` e `appium driver install uiautomator2@8.7.0`). Ela sobe o Postgres e a própria API, então a sua API precisa estar parada antes:
 
 ```powershell
 pwsh scripts/android-smoke.ps1

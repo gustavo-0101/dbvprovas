@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # Monta o ambiente Android pela linha de comando (D-114): JDK 21, workload do MAUI, Android SDK
 # e o emulador "dbvprovas". Uso, uma vez por máquina: pwsh scripts/setup-android.ps1
 # Pode rodar de novo: o que já está instalado é reaproveitado (só o emulador "dbvprovas" é recriado).
@@ -40,6 +41,7 @@ function Find-CmdlineTool([string] $Name) {
 
 # O winget sai com código diferente de zero quando o pacote já está instalado: só chama se faltar.
 $jdk = Find-Jdk
+$jdkInstalledNow = $false
 if ($jdk) {
     Write-Host "JDK 21 já instalado em $jdk."
 }
@@ -49,6 +51,7 @@ else {
     }
     winget install --id Microsoft.OpenJDK.21 --exact --accept-source-agreements --accept-package-agreements
     Assert-NativeSuccess 'Falha ao instalar o JDK 21 com o winget'
+    $jdkInstalledNow = $true
     $jdk = Find-Jdk
     if (-not $jdk) { throw "JDK 21 não encontrado em $jdkParent." }
 }
@@ -74,6 +77,8 @@ finally {
 [Environment]::SetEnvironmentVariable('JAVA_HOME', $jdk, 'User')
 $env:ANDROID_HOME = $sdk
 $env:JAVA_HOME = $jdk
+Write-Host "Variáveis de usuário gravadas: ANDROID_HOME = $sdk ; JAVA_HOME = $jdk"
+Write-Host 'Só terminais abertos depois deste ponto enxergam essas variáveis: abra um terminal novo antes de usar o emulador e a fumaça.'
 
 $sdkmanager = Find-CmdlineTool 'sdkmanager'
 $avdmanager = Find-CmdlineTool 'avdmanager'
@@ -97,7 +102,8 @@ finally { $ErrorActionPreference = $previousPreference }
 $accelExit = $LASTEXITCODE
 $accel | ForEach-Object { Write-Host "  $_" }
 
-$launch = "& '$emulator' -avd dbvprovas"
+# -gpu swiftshader_indirect: a WebView do app cai com a GPU padrão; -no-metrics: evita a pergunta de coleta de métricas do emulador.
+$launch = "& '$emulator' -avd dbvprovas -gpu swiftshader_indirect -no-metrics"
 if (($accelExit -eq 0) -and [bool]($accel -match 'is installed and usable')) {
     Write-Host "Pronto. Para abrir o emulador: $launch"
 }
@@ -105,7 +111,8 @@ else {
     Write-Warning ("O emulador está instalado, mas a aceleração por hardware não foi confirmada (saída acima). " +
         "Ligue você mesmo a 'Plataforma do Hipervisor do Windows' (Windows Hypervisor Platform) em 'Ativar ou desativar recursos do Windows' " +
         "e reinicie o computador; se ela já estiver ligada, confira a virtualização (Intel VT-x ou AMD-V) no BIOS. " +
-        "Este script não altera recursos do Windows nem o PATH.")
+        "Este script não liga recursos do Windows nem edita o PATH por conta própria; " +
+        $(if ($jdkInstalledNow) { "só o instalador do JDK, que rodou agora, ajustou o PATH e o JAVA_HOME da máquina." } else { "o JDK já estava instalado e nada foi mexido no PATH." }))
     Write-Host "Instalação concluída, mas ainda sem aceleração. Depois de resolver, confira com: & '$emulator' -accel-check"
     Write-Host "e abra o emulador com: $launch"
 }
