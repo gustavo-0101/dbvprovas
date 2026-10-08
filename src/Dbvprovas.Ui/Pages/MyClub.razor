@@ -5,6 +5,9 @@
 
 <PageTitle>Meu clube</PageTitle>
 
+@* Um só h1, o mesmo elemento em todos os estados: o foco da navegação o acha e não o perde ao ficar pronta. *@
+<h1>@(state == State.Ready ? club!.Name : "Meu clube")</h1>
+
 @switch (state)
 {
     case State.Loading:
@@ -21,7 +24,6 @@
         <p>Você ainda não participa de nenhum clube.</p>
         break;
     case State.Ready:
-        <h1>@club!.Name</h1>
         <h2>Membros</h2>
         <ul class="members">
             @foreach (var member in members)

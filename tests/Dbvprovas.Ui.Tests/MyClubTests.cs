@@ -99,6 +99,55 @@ public sealed class MyClubTests
         });
     }
 
+    // Um só título por tela, o mesmo elemento em todos os estados: o foco da navegação acha o h1 e não o
+    // perde quando a tela fica pronta (RF-TEN-001, RF-TEN-004).
+    [Theory]
+    [InlineData("loading")]
+    [InlineData("unavailable")]
+    [InlineData("not-found")]
+    [InlineData("no-club")]
+    [InlineData("ready")]
+    public void My_club_has_one_heading_in_every_state(string scenario)
+    {
+        using var ui = new UiHarness();
+        string expectedHeading;
+        string expectedMarkup;
+        switch (scenario)
+        {
+            case "loading":
+                var pending = new TaskCompletionSource<HttpResponseMessage>();
+                ui.Api.Hold(HttpMethod.Get, ApiRoutes.Me, pending.Task);
+                expectedHeading = "Meu clube";
+                expectedMarkup = "Carregando…";
+                break;
+            case "unavailable":
+                ui.Api.Offline = true;
+                expectedHeading = "Meu clube";
+                expectedMarkup = "Não foi possível falar com o servidor.";
+                break;
+            case "not-found":
+                ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Aurora", [new ClubSummary(UiHarness.ClubId, "Clube Águias")]));
+                expectedHeading = "Meu clube";
+                expectedMarkup = "Clube não encontrado.";
+                break;
+            case "no-club":
+                ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Heitor", []));
+                expectedHeading = "Meu clube";
+                expectedMarkup = "Você ainda não participa de nenhum clube.";
+                break;
+            default:
+                ui.ServeClubAguias();
+                expectedHeading = "Clube Águias";
+                expectedMarkup = "Dalva";
+                break;
+        }
+
+        var page = ui.Context.Render<MyClub>();
+
+        page.WaitForAssertion(() => Assert.Contains(expectedMarkup, page.Markup));
+        Assert.Equal(expectedHeading, Assert.Single(page.FindAll("h1")).TextContent);
+    }
+
     // Os pedidos levam a sessão guardada (RF-TEN-001).
     [Fact]
     public void My_club_sends_session_token()
