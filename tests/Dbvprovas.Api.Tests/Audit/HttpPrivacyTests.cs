@@ -35,12 +35,15 @@ public sealed class HttpPrivacyTests(PostgresFixture db)
             ($"/invalid/{percentEncoded}", HttpStatusCode.NotFound),
         };
         using var json = new StringWriter();
+        var console = TextWriter.Synchronized(json);
         var original = Console.Out;
         using var traces = new ActivityCapture();
         var captured = new List<CapturedLog>();
-        Console.SetOut(TextWriter.Synchronized(json));
+        Console.SetOut(console);
         try
         {
+            // O lock da leitura abaixo só vale se o Console.Out for este mesmo wrapper.
+            Assert.Same(console, Console.Out);
             await using var api = new ApiFactory(db, "Production") { UseTestAuthentication = true };
             await using var host = api.WithWebHostBuilder(builder => builder.ConfigureLogging(logging =>
                 logging.AddFilter<ConsoleLoggerProvider>(null, LogLevel.Trace)));
@@ -64,7 +67,11 @@ public sealed class HttpPrivacyTests(PostgresFixture db)
             Console.SetOut(original);
         }
 
-        var output = json.ToString();
+        // RNF-PRV-001, CA-AUD-004: o DisposeAsync volta antes de o host terminar o shutdown (numa thread do pool),
+        // e a fila do logger ainda escreve; o snapshot toma o mesmo lock do wrapper para não correr com essas escritas.
+        string output;
+        lock (console)
+            output = json.ToString();
         Assert.NotEmpty(output);
         var records = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => JsonDocument.Parse(line)).ToArray();
         try
