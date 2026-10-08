@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Nada do app sai do aparelho por backup: a sessão e, no futuro, dados de menores ficam só nele (PC-02).
+    allowBackup="false" desliga o backup na nuvem, mas com targetSdk 31 ou mais ele não desliga a transferência
+    entre aparelhos em alguns fabricantes (https://developer.android.com/identity/data/autobackup).
+    Por isso, no Android 12 ou mais novo, dataExtractionRules exclui tudo das duas modalidades.
+  -->
+  <application
+      android:allowBackup="false"
+      android:dataExtractionRules="@xml/data_extraction_rules"
+      android:icon="@mipmap/appicon"
+      android:roundIcon="@mipmap/appicon_round"
+      android:supportsRtl="true"
+      android:networkSecurityConfig="@xml/network_security_config">
+    <!--
+      Sem telemetria remota no front (D-115, RNF-PRV-006): a WebView pode enviar diagnóstico anônimo ao Google
+      por app que a instancia; esta marca desliga o envio (https://developer.android.com/develop/ui/views/layout/webapps/managing-webview).
+    -->
+    <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
+  </application>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

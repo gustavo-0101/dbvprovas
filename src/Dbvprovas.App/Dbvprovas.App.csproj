@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Dbvprovas.App</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <EnableDefaultCssItems>false</EnableDefaultCssItems>
+    <ApplicationTitle>dbvprovas</ApplicationTitle>
+    <ApplicationId>io.github.gustavo0101.dbvprovas</ApplicationId>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <!-- O MAUI Blazor Hybrid exige Android 7.0 (API 24) ou mais novo (D-121). -->
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Versão do Microsoft.Maui.Essentials cujo nome interno do arquivo de preferências do SecureStorage foi conferido (RNF-TEN-004). -->
+    <VerifiedMauiVersion>10.0.110</VerifiedMauiVersion>
+  </PropertyGroup>
+  <!--
+    O SecureSessionStore apaga por nome o arquivo do SecureStorage, que vive no Microsoft.Maui.Essentials: um alias interno
+    que pode mudar numa atualização. O Essentials chega por transitividade (Microsoft.Maui.Controls, WebView.Maui), então o
+    alarme confere a versão resolvida na compilação, não a do Directory.Packages.props. Se ela diferir da conferida, ou se o
+    pacote não aparecer, o build para: reconfira o nome em SecureSessionStore e atualize VerifiedMauiVersion.
+  -->
+  <Target Name="CheckMauiVersionForSecureStorage" AfterTargets="ResolveAssemblyReferences">
+    <PropertyGroup>
+      <_ResolvedMauiEssentialsVersion>@(ReferencePath->WithMetadataValue('NuGetPackageId', 'Microsoft.Maui.Essentials')->'%(NuGetPackageVersion)'->Distinct())</_ResolvedMauiEssentialsVersion>
+    </PropertyGroup>
+    <Message Importance="normal" Text="Microsoft.Maui.Essentials resolvido: '$(_ResolvedMauiEssentialsVersion)' (conferido: '$(VerifiedMauiVersion)')." />
+    <Error Condition="'$(_ResolvedMauiEssentialsVersion)' == ''"
+           Text="O Microsoft.Maui.Essentials não apareceu entre as referências resolvidas, então a versão não pôde ser conferida. Revise o alarme em Dbvprovas.App.csproj e o nome do arquivo de preferências do SecureStorage em SecureSessionStore.cs (RNF-TEN-004)." />
+    <Error Condition="'$(_ResolvedMauiEssentialsVersion)' != '' and '$(_ResolvedMauiEssentialsVersion)' != '$(VerifiedMauiVersion)'"
+           Text="A versão resolvida do Microsoft.Maui.Essentials ($(_ResolvedMauiEssentialsVersion)) difere da conferida ($(VerifiedMauiVersion)). Reconfira o nome do arquivo de preferências do SecureStorage em SecureSessionStore.cs e atualize VerifiedMauiVersion em Dbvprovas.App.csproj (RNF-TEN-004)." />
+  </Target>
+  <ItemGroup>
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Dbvprovas.Ui\Dbvprovas.Ui.csproj" />
+  </ItemGroup>
+</Project>

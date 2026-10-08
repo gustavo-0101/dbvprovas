@@ -39,6 +39,20 @@ public sealed class LoginTests
         Assert.Empty(page.FindAll("ul.accounts"));
     }
 
+    // No Android, socket fechado ou prazo estourado sobem como WebException, que não é HttpRequestException (RF-TEN-004, RNF-TEN-004).
+    [Fact]
+    public void Login_shows_retry_when_transport_throws_web_exception()
+    {
+        using var ui = new UiHarness(token: null);
+        ui.Api.Failure = new WebException("socket closed", WebExceptionStatus.ConnectionClosed);
+
+        var page = ui.Context.Render<Login>();
+
+        page.WaitForAssertion(() => Assert.Contains("Não foi possível falar com o servidor.", page.Markup));
+        Assert.NotNull(page.Find("button.retry"));
+        Assert.DoesNotContain("socket", page.Markup);
+    }
+
     // API fora do ar quando a tela de entrada abre (RF-TEN-004).
     [Fact]
     public void Login_shows_retry_when_api_is_down()

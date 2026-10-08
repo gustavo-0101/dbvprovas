@@ -56,6 +56,8 @@ jobs:
               - 'src/Dbvprovas.Contracts/**'
               - 'tests/Dbvprovas.App.Smoke/**'
               - 'scripts/ci-android-smoke.sh'
+              - 'compose.yaml'
+              - 'docker/**'
 
   pc16:
     runs-on: ubuntu-latest
@@ -128,9 +130,77 @@ jobs:
       - name: Caminho feliz no navegador (Playwright)
         run: dotnet test tests/Dbvprovas.Web.E2E -c Release --no-build
 
+  android:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Habilitar o KVM para o emulador
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v6
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Workload e dependências do Android
+        run: |
+          dotnet workload install maui-android
+          dotnet build src/Dbvprovas.App -t:InstallAndroidDependencies -f net10.0-android -p:AndroidSdkDirectory="$ANDROID_HOME" -p:AcceptAndroidSDKLicenses=True
+      - name: Postgres de dev
+        run: |
+          # Cada senha é mascarada no log antes de ir para o .env.
+          : > .env
+          for name in POSTGRES_PASSWORD DBV_OWNER_PASSWORD DBV_APP_PASSWORD; do
+            pw="$(openssl rand -hex 16)"
+            echo "::add-mask::$pw"
+            printf '%s=%s\n' "$name" "$pw" >> .env
+          done
+          docker compose up -d --wait postgres
+      - name: Build da API
+        run: dotnet build src/Dbvprovas.Api
+      - name: API em segundo plano
+        run: |
+          set -a; . ./.env; set +a
+          export ASPNETCORE_ENVIRONMENT=Development
+          export ConnectionStrings__App="Host=127.0.0.1;Port=5432;Database=dbvprovas;Username=dbv_app;Password=${DBV_APP_PASSWORD}"
+          export ConnectionStrings__Owner="Host=127.0.0.1;Port=5432;Database=dbvprovas;Username=dbv_owner;Password=${DBV_OWNER_PASSWORD}"
+          nohup dotnet run --no-build --project src/Dbvprovas.Api --no-launch-profile --urls http://127.0.0.1:5080 > api.log 2>&1 &
+          for i in $(seq 1 90); do curl -fs http://127.0.0.1:5080/health/ready && exit 0; sleep 2; done
+          cat api.log
+          exit 1
+      - name: Build do app (APK com os assemblies embutidos) e da fumaça
+        run: |
+          dotnet build src/Dbvprovas.App -f net10.0-android -c Debug -p:EmbedAssembliesIntoApk=true -p:AndroidSdkDirectory="$ANDROID_HOME"
+          dotnet build tests/Dbvprovas.App.Smoke
+      - name: Appium
+        run: |
+          npm install -g appium@3.8.0
+          appium driver install uiautomator2@8.7.0
+      - name: Fumaça no emulador (Appium)
+        # Um travamento no encerramento do emulador deve falhar em minutos, não esgotar a hora do job (RSK-AUD-001).
+        timeout-minutes: 20
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          # Os padrões da action (v2.38.0) mais -no-metrics, para o emulador não perguntar sobre coleta de métricas.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          script: sh scripts/ci-android-smoke.sh
+
   ci-ok:
     if: always()
-    needs: [changes, pc16, backend, front]
+    needs: [changes, pc16, backend, front, android]
     runs-on: ubuntu-latest
     steps:
       - name: Conferir o resultado dos jobs
