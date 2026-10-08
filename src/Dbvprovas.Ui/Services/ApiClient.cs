@@ -66,7 +66,8 @@ public sealed class ApiClient(HttpClient http, SessionState session)
                 _ => ApiError.Unavailable,
             });
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException)
+        // WebException: no Android, socket fechado e prazo estourado sobem assim, não como HttpRequestException.
+        catch (Exception e) when (e is HttpRequestException or WebException or TaskCanceledException or JsonException or NotSupportedException)
         {
             return ApiResult<T>.Fail(ApiError.Unavailable);
         }

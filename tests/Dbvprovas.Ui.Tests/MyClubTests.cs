@@ -68,6 +68,20 @@ public sealed class MyClubTests
         Assert.DoesNotContain("Exception", page.Markup);
     }
 
+    // No Android, socket fechado ou prazo estourado sobem como WebException, que não é HttpRequestException (RF-TEN-004, RNF-TEN-004).
+    [Fact]
+    public void My_club_shows_retry_when_transport_throws_web_exception()
+    {
+        using var ui = new UiHarness();
+        ui.Api.Failure = new WebException("socket closed", WebExceptionStatus.ConnectionClosed);
+
+        var page = ui.Context.Render<MyClub>();
+
+        page.WaitForAssertion(() => Assert.Contains("Não foi possível falar com o servidor.", page.Markup));
+        Assert.NotNull(page.Find("button.retry"));
+        Assert.DoesNotContain("socket", page.Markup);
+    }
+
     // Conta sem participação ativa (RF-TEN-001).
     [Fact]
     public void My_club_without_membership_says_so()

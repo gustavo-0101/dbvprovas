@@ -11,6 +11,9 @@ internal sealed class StubApi : HttpMessageHandler
     private readonly Dictionary<string, Task<HttpResponseMessage>> _held = new();
 
     public bool Offline { get; set; }
+
+    // Falha de transporte de outro tipo, como a que o Android sobe (RNF-TEN-004).
+    public Exception? Failure { get; set; }
     public List<string> Requests { get; } = [];
 
     public void Respond(HttpMethod method, string path, HttpStatusCode status, object? body = null) =>
@@ -39,6 +42,8 @@ internal sealed class StubApi : HttpMessageHandler
         Requests.Add($"{key} {request.Headers.Authorization}");
         if (Offline)
             throw new HttpRequestException("offline");
+        if (Failure is not null)
+            throw Failure;
         if (_held.TryGetValue(key, out var held))
             return held;
         return Task.FromResult(_routes.TryGetValue(key, out var respond) ? respond() : new HttpResponseMessage(HttpStatusCode.NotFound));
