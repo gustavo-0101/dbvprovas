@@ -11,7 +11,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Cada job tem limite de tempo de cerca de 5 vezes o tempo medido: um job travado falha cedo (RNF-AUD-002, RSK-AUD-001).
+# Cada job tem limite de tempo com folga sobre o tempo medido: um job travado falha cedo (RNF-AUD-002, RSK-AUD-001).
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -192,7 +192,7 @@ jobs:
           npm install -g appium@3.8.0
           appium driver install uiautomator2@8.7.0
       - name: Fumaça no emulador (Appium)
-        # Um travamento no encerramento do emulador deve falhar em minutos, não esgotar a hora do job (RSK-AUD-001).
+        # Um travamento no encerramento do emulador deve falhar em minutos, não esgotar o limite do job (RSK-AUD-001).
         timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:

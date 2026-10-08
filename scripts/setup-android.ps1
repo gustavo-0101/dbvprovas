@@ -13,8 +13,9 @@ function Assert-NativeSuccess([string] $Message) {
 }
 
 # Com um emulador aberto, o sdkmanager e o avdmanager não conseguem trocar arquivos em uso.
-if (Get-Process -Name 'qemu-system-x86_64' -ErrorAction SilentlyContinue) {
-    throw 'Há um emulador aberto; feche-o (adb emu kill) e rode o script de novo. O emulador "dbvprovas" é recriado do zero.'
+# O processo é o qemu-system-x86_64, ou o -headless quando o emulador abre com -no-window.
+if (Get-Process -Name 'qemu-system-x86_64', 'qemu-system-x86_64-headless' -ErrorAction SilentlyContinue) {
+    throw 'Há um emulador aberto; feche a janela do emulador (ou rode adb emu kill com o adb do ANDROID_HOME) e rode o script de novo. O emulador "dbvprovas" é recriado do zero.'
 }
 
 # Ordena pastas pelo número de versão do nome (21.0.12 vem depois de 21.0.8); sem número, vai por último.
@@ -23,17 +24,26 @@ function Get-VersionKey([string] $Name) {
     if ($match.Success) { [version] $match.Value } else { [version] '0.0' }
 }
 
-# Um JDK vale se tiver bin\java.exe e o arquivo release disser versão 21.
+# Um JDK vale se for uma pasta com bin\java.exe e bin\javac.exe (um JRE não compila o app) e o arquivo release disser versão 21.
+# Qualquer valor inválido (vazio, entre aspas, drive que não existe) devolve $false: nunca lança.
 function Test-Jdk21([string] $Path) {
-    if (-not $Path -or -not (Test-Path (Join-Path $Path 'bin\java.exe'))) { return $false }
-    $release = Join-Path $Path 'release'
-    (Test-Path $release) -and [bool](Select-String -Path $release -Pattern '^JAVA_VERSION="21\.' -Quiet)
+    try {
+        $Path = "$Path".Trim().Trim('"')
+        if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+        foreach ($tool in 'bin\java.exe', 'bin\javac.exe') {
+            if (-not (Test-Path -LiteralPath (Join-Path $Path $tool))) { return $false }
+        }
+        $release = Join-Path $Path 'release'
+        (Test-Path -LiteralPath $release) -and [bool](Select-String -LiteralPath $release -Pattern '^JAVA_VERSION="21("|\.)' -Quiet)
+    }
+    catch { $false }
 }
 
 # Primeiro o JAVA_HOME (do processo ou do usuário), que pode apontar para fora do caminho padrão.
 function Find-Jdk {
     foreach ($candidate in $env:JAVA_HOME, [Environment]::GetEnvironmentVariable('JAVA_HOME', 'User')) {
-        if (Test-Jdk21 $candidate) { return $candidate }
+        $path = "$candidate".Trim().Trim('"')
+        if (Test-Jdk21 $path) { return $path }
     }
     if (-not (Test-Path $jdkParent)) { return }
     Get-ChildItem $jdkParent -Directory -Filter 'jdk-21*' |
@@ -66,7 +76,7 @@ else {
         throw 'winget não encontrado; instale o JDK 21 (Microsoft OpenJDK) e rode o script de novo.'
     }
     winget install --id Microsoft.OpenJDK.21 --exact --accept-source-agreements --accept-package-agreements
-    Assert-NativeSuccess 'Falha ao instalar o JDK 21 com o winget (se ele já estiver instalado fora do caminho padrão, aponte o JAVA_HOME para a pasta dele e rode de novo)'
+    Assert-NativeSuccess 'Falha ao instalar o JDK 21 com o winget; se ele já estiver instalado fora do caminho padrão, aponte o JAVA_HOME para a pasta dele e rode de novo'
     $jdkInstalledNow = $true
     $jdk = Find-Jdk
     if (-not $jdk) { throw "O winget terminou, mas nenhum JDK 21 apareceu em $jdkParent; se ele foi instalado em outro lugar, aponte o JAVA_HOME para a pasta dele e rode de novo." }
