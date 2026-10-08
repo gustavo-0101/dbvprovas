@@ -187,6 +187,8 @@ jobs:
           npm install -g appium@3.8.0
           appium driver install uiautomator2@8.7.0
       - name: Fumaça no emulador (Appium)
+        # Um travamento no encerramento do emulador deve falhar em minutos, não esgotar a hora do job (RSK-AUD-001).
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
