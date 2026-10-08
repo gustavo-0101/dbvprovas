@@ -41,6 +41,23 @@ dotnet build tests/Dbvprovas.Web.E2E; pwsh tests/Dbvprovas.Web.E2E/bin/Debug/net
 dotnet test tests/Dbvprovas.Web.E2E --no-build   # caminho feliz no navegador (Playwright); também exige o Docker (Testcontainers)
 ```
 
+## App Android
+
+Requer o ambiente Android (uma vez: `pwsh scripts/setup-android.ps1`) e a API rodando. Compilar a solução inteira (`Dbvprovas.slnx`) também exige o workload `maui-android`, porque o app faz parte dela.
+
+```powershell
+& "$env:ANDROID_HOME\emulator\emulator.exe" -avd dbvprovas -gpu swiftshader_indirect -no-metrics
+dotnet build src/Dbvprovas.App -t:Run -f net10.0-android
+```
+
+No emulador, o app fala com a API da máquina de dev em `http://10.0.2.2:5080`.
+
+Fumaça com Appium (exige `npm install -g appium@3.8.0` e `appium driver install uiautomator2@8.7.0`):
+
+```powershell
+pwsh scripts/android-smoke.ps1
+```
+
 ## Licença
 
 [AGPL-3.0](LICENSE).

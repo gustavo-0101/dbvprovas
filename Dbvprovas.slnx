@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dbvprovas.Api.Tests/Dbvprovas.Api.Tests.csproj" />
+    <Project Path="tests/Dbvprovas.App.Smoke/Dbvprovas.App.Smoke.csproj" />
     <Project Path="tests/Dbvprovas.TestSupport/Dbvprovas.TestSupport.csproj" />
     <Project Path="tests/Dbvprovas.Tools.Tests/Dbvprovas.Tools.Tests.csproj" />
     <Project Path="tests/Dbvprovas.Ui.Tests/Dbvprovas.Ui.Tests.csproj" />
