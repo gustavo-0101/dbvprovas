@@ -10,7 +10,7 @@ appium_pid=$!
 # (issue pública ReactiveCircus/android-emulator-runner#385; RSK-AUD-001). Ao sair, encerra os dois.
 # O Appium recebe SIGTERM, com até 15 s de espera e depois SIGKILL, para o trap não pendurar o passo.
 # O kernel corta o nome do processo em 15 caracteres: o crashpad_handler aparece como crashpad_handle, por isso o -x com esse nome.
-# O SIGINT é o que a issue relata como suficiente no fim do script (o SIGTERM também funcionou).
+# O sinal é SIGTERM porque o SIGINT pode estar ignorado: a action sobe o emulador em segundo plano num sh -c não interativo.
 # O trap não chama exit, então o código de saída do script continua sendo o do comando que o encerrou (o dotnet test).
 cleanup() {
   kill "$appium_pid" 2>/dev/null || true
@@ -18,7 +18,7 @@ cleanup() {
   while kill -0 "$appium_pid" 2>/dev/null && [ "$n" -lt 15 ]; do sleep 1; n=$((n + 1)); done
   if kill -0 "$appium_pid" 2>/dev/null; then kill -9 "$appium_pid" 2>/dev/null || true; fi
   wait "$appium_pid" 2>/dev/null || true
-  pkill -INT -x crashpad_handle || true
+  pkill -TERM -x crashpad_handle || true
 }
 trap cleanup EXIT
 
