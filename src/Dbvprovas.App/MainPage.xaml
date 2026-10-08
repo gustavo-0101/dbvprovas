@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:ui="clr-namespace:Dbvprovas.Ui;assembly=Dbvprovas.Ui"
+             x:Class="Dbvprovas.App.MainPage"
+             SafeAreaEdges="All">
+    <!-- No MAUI 10 a página nasce de borda a borda; SafeAreaEdges tira o título de baixo da barra de status. -->
+    <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
+        <BlazorWebView.RootComponents>
+            <RootComponent Selector="#app" ComponentType="{x:Type ui:Routes}" />
+        </BlazorWebView.RootComponents>
+    </BlazorWebView>
+</ContentPage>

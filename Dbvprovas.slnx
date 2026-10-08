@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Dbvprovas.Api/Dbvprovas.Api.csproj" />
+    <Project Path="src/Dbvprovas.App/Dbvprovas.App.csproj" />
     <Project Path="src/Dbvprovas.Contracts/Dbvprovas.Contracts.csproj" />
     <Project Path="src/Dbvprovas.Ui/Dbvprovas.Ui.csproj" />
     <Project Path="src/Dbvprovas.Web/Dbvprovas.Web.csproj" />
