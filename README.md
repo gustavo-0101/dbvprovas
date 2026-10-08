@@ -38,7 +38,7 @@ dotnet test tests/Dbvprovas.Api.Tests      # Postgres em contêiner (Testcontain
 dotnet test tests/Dbvprovas.Tools.Tests    # verificador e hooks (exige o gitleaks)
 dotnet test tests/Dbvprovas.Ui.Tests       # componentes (bUnit)
 dotnet build tests/Dbvprovas.Web.E2E; pwsh tests/Dbvprovas.Web.E2E/bin/Debug/net10.0/playwright.ps1 install chromium
-dotnet test tests/Dbvprovas.Web.E2E --no-build   # caminho feliz no navegador (Playwright)
+dotnet test tests/Dbvprovas.Web.E2E --no-build   # caminho feliz no navegador (Playwright); também exige o Docker (Testcontainers)
 ```
 
 ## Licença

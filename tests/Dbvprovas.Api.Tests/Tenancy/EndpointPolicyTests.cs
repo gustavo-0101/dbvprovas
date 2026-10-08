@@ -5,6 +5,7 @@ using Dbvprovas.Contracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Endpoints;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.StaticAssets;
@@ -25,14 +26,16 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
 
     // Páginas do site e o endpoint de redirecionamento do Blazor (D-112). Os arquivos estáticos entram
     // pelo marcador do MapStaticAssets e a lista de recursos pelo mapa de importação das páginas;
-    // nunca por prefixo de caminho.
-    private static readonly string[] AnonymousSiteRoutes =
+    // nunca por prefixo de caminho. A rota de página só vale com o marcador de componente do
+    // MapRazorComponents; o redirecionamento não tem marcador próprio e fica pela rota exata.
+    private static readonly string[] SitePageRoutes =
     [
         "/",
         "/club",
         "/not-found",
-        "/_framework/opaque-redirect",
     ];
+
+    private static readonly string[] AnonymousSiteRoutes = [.. SitePageRoutes, "/_framework/opaque-redirect"];
 
     private static readonly string[] ResourceCollectionNames =
     [
@@ -72,6 +75,33 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
     public void CA_TEN_006_Anonymous_site_lookalike_is_rejected(string route)
     {
         Assert.False(HasExplicitPolicy(AnonymousEndpoint(route), FixedRoutes()));
+    }
+
+    // A rota de página só vale para o endpoint que o MapRazorComponents cria (marcador do componente):
+    // um endpoint anônimo de API mapeado em /, /club ou /not-found não herda a exceção (CA-TEN-006, D-112).
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/club")]
+    [InlineData("/not-found")]
+    public void CA_TEN_006_Anonymous_endpoint_at_page_route_without_component_marker_is_rejected(string route)
+    {
+        Assert.False(HasExplicitPolicy(AnonymousEndpoint(route), FixedRoutes()));
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/club")]
+    [InlineData("/not-found")]
+    public void CA_TEN_006_Anonymous_endpoint_at_page_route_with_component_marker_is_accepted(string route)
+    {
+        Assert.True(HasExplicitPolicy(AnonymousEndpoint(route, new ComponentTypeMetadata(typeof(object))), FixedRoutes()));
+    }
+
+    // O marcador do componente não abre rota nova: ela continua precisando estar na lista.
+    [Fact]
+    public void CA_TEN_006_Component_marker_does_not_allow_a_route_outside_the_allowlist()
+    {
+        Assert.False(HasExplicitPolicy(AnonymousEndpoint("/export", new ComponentTypeMetadata(typeof(object))), FixedRoutes()));
     }
 
     // O marcador de arquivo estático vale só quando a rota do descritor é a do endpoint.
@@ -188,9 +218,16 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         var route = Route(endpoint);
         var anonymous = endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null;
         var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
-        return anonymous ? anonymousRoutes.Contains(route) || IsStaticAsset(endpoint, route)
+        return anonymous ? IsAllowedAnonymousRoute(endpoint, route, anonymousRoutes) || IsStaticAsset(endpoint, route)
             : policies.Any(p => !string.IsNullOrWhiteSpace(p.Policy));
     }
+
+    private static bool IsAllowedAnonymousRoute(RouteEndpoint endpoint, string route, IReadOnlySet<string> anonymousRoutes) =>
+        anonymousRoutes.Contains(route) && (!SitePageRoutes.Contains(route) || IsComponentPage(endpoint));
+
+    // O MapRazorComponents põe o tipo do componente em cada endpoint de página que cria.
+    private static bool IsComponentPage(RouteEndpoint endpoint) =>
+        endpoint.Metadata.GetMetadata<ComponentTypeMetadata>() is not null;
 
     // O MapStaticAssets põe o descritor do arquivo em cada endpoint que cria, com a rota que vira o padrão.
     private static bool IsStaticAsset(RouteEndpoint endpoint, string route) =>

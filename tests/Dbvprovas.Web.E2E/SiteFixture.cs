@@ -156,20 +156,26 @@ public sealed class SiteFixture : IAsyncLifetime
 
     private async Task WaitUntilReadyAsync()
     {
-        using var http = new HttpClient();
+        // Prazo curto por tentativa: um GET pendurado não pode estourar os 2 minutos da subida.
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         var deadline = DateTime.UtcNow.AddMinutes(2);
         while (DateTime.UtcNow < deadline)
         {
             if (_api!.HasExited)
+            {
+                // Sem esperar o fim dos fluxos redirecionados, a mensagem sairia sem as últimas linhas da API.
+                _api.WaitForExit();
                 throw new InvalidOperationException($"API exited with code {_api.ExitCode}:\n{ApiOutput()}");
+            }
+
             try
             {
                 if ((await http.GetAsync($"{BaseUrl}/health/ready")).IsSuccessStatusCode)
                     return;
             }
-            catch (HttpRequestException)
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
             {
-                // Ainda subindo.
+                // Ainda subindo (ou a tentativa estourou o prazo).
             }
 
             await Task.Delay(TimeSpan.FromSeconds(1));
