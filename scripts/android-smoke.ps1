@@ -70,7 +70,7 @@ try {
     foreach ($wait in @(@{ Url = 'http://localhost:5080/health/ready'; Process = $api }, @{ Url = 'http://127.0.0.1:4723/status'; Process = $appium })) {
         $deadline = (Get-Date).AddMinutes(2)
         while ($true) {
-            try { Invoke-WebRequest $wait.Url -UseBasicParsing | Out-Null; break }
+            try { Invoke-WebRequest $wait.Url -UseBasicParsing -TimeoutSec 5 | Out-Null; break }
             catch {
                 if ($wait.Process.HasExited) { throw "O processo encerrou antes de responder: $($wait.Url) (veja appium-logs/)." }
                 if ((Get-Date) -gt $deadline) { throw "Não respondeu a tempo: $($wait.Url)" }

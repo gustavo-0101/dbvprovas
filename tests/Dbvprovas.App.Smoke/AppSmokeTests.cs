@@ -23,6 +23,9 @@ public sealed class AppSmokeTests
         options.AddAdditionalAppiumOption("appActivity", ".MainActivity");
         options.AddAdditionalAppiumOption("noReset", false);
         options.AddAdditionalAppiumOption("newCommandTimeout", 180);
+        // Os padrões do driver (20 s) são curtos para o emulador por software de um CI frio (RSK-AUD-001).
+        options.AddAdditionalAppiumOption("uiautomator2ServerInstallTimeout", 120000);
+        options.AddAdditionalAppiumOption("adbExecTimeout", 120000);
         using var driver = new AndroidDriver(new Uri(appium!), options, TimeSpan.FromMinutes(3));
 
         WaitFor(driver, "new UiSelector().textContains(\"Aurora\")").Click();

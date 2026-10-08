@@ -14,27 +14,28 @@
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
   <PropertyGroup>
-    <!-- Versão do Microsoft.Maui.Controls cujo nome interno do arquivo de preferências do SecureStorage foi conferido (RNF-TEN-004). -->
+    <!-- Versão do Microsoft.Maui.Essentials cujo nome interno do arquivo de preferências do SecureStorage foi conferido (RNF-TEN-004). -->
     <VerifiedMauiVersion>10.0.110</VerifiedMauiVersion>
   </PropertyGroup>
   <!--
-    O SecureSessionStore apaga por nome o arquivo do SecureStorage do MAUI, um alias interno que pode mudar numa atualização.
-    Se a versão do pacote (Directory.Packages.props) diferir da conferida, o build para: reconfira o nome em SecureSessionStore
-    e atualize VerifiedMauiVersion.
+    O SecureSessionStore apaga por nome o arquivo do SecureStorage, que vive no Microsoft.Maui.Essentials: um alias interno
+    que pode mudar numa atualização. O Essentials chega por transitividade (Microsoft.Maui.Controls, WebView.Maui), então o
+    alarme confere a versão resolvida na compilação, não a do Directory.Packages.props. Se ela diferir da conferida, ou se o
+    pacote não aparecer, o build para: reconfira o nome em SecureSessionStore e atualize VerifiedMauiVersion.
   -->
-  <Target Name="CheckMauiVersionForSecureStorage" BeforeTargets="CoreCompile">
+  <Target Name="CheckMauiVersionForSecureStorage" AfterTargets="ResolveAssemblyReferences">
     <PropertyGroup>
-      <_CurrentMauiVersion>@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.Maui.Controls')->'%(Version)')</_CurrentMauiVersion>
+      <_ResolvedMauiEssentialsVersion>@(ReferencePath->WithMetadataValue('NuGetPackageId', 'Microsoft.Maui.Essentials')->'%(NuGetPackageVersion)'->Distinct())</_ResolvedMauiEssentialsVersion>
     </PropertyGroup>
-    <Error Condition="'$(_CurrentMauiVersion)' != '$(VerifiedMauiVersion)'"
-           Text="A versão do Microsoft.Maui.Controls ($(_CurrentMauiVersion)) difere da conferida ($(VerifiedMauiVersion)). Reconfira o nome do arquivo de preferências do SecureStorage em SecureSessionStore.cs e atualize VerifiedMauiVersion em Dbvprovas.App.csproj (RNF-TEN-004)." />
+    <Message Importance="normal" Text="Microsoft.Maui.Essentials resolvido: '$(_ResolvedMauiEssentialsVersion)' (conferido: '$(VerifiedMauiVersion)')." />
+    <Error Condition="'$(_ResolvedMauiEssentialsVersion)' == ''"
+           Text="O Microsoft.Maui.Essentials não apareceu entre as referências resolvidas, então a versão não pôde ser conferida. Revise o alarme em Dbvprovas.App.csproj e o nome do arquivo de preferências do SecureStorage em SecureSessionStore.cs (RNF-TEN-004)." />
+    <Error Condition="'$(_ResolvedMauiEssentialsVersion)' != '' and '$(_ResolvedMauiEssentialsVersion)' != '$(VerifiedMauiVersion)'"
+           Text="A versão resolvida do Microsoft.Maui.Essentials ($(_ResolvedMauiEssentialsVersion)) difere da conferida ($(VerifiedMauiVersion)). Reconfira o nome do arquivo de preferências do SecureStorage em SecureSessionStore.cs e atualize VerifiedMauiVersion em Dbvprovas.App.csproj (RNF-TEN-004)." />
   </Target>
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
-    <MauiImage Include="Resources\Images\*" />
-    <MauiFont Include="Resources\Fonts\*" />
-    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" />
