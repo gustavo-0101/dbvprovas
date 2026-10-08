@@ -11,9 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Cada job tem limite de tempo de cerca de 5 vezes o tempo medido: um job travado falha cedo (RNF-AUD-002, RSK-AUD-001).
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -61,6 +63,7 @@ jobs:
 
   pc16:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -104,6 +107,7 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -116,6 +120,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.front == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -134,7 +139,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Habilitar o KVM para o emulador
@@ -202,6 +207,7 @@ jobs:
     if: always()
     needs: [changes, pc16, backend, front, android]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Conferir o resultado dos jobs
         env:

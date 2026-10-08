@@ -5,11 +5,16 @@
 $ErrorActionPreference = 'Stop'
 $sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 $image = 'system-images;android-34;google_apis;x86_64'
-$jdkParent = 'C:\Program Files\Microsoft'
+$jdkParent = Join-Path $env:ProgramFiles 'Microsoft'
 
 # O pwsh não para sozinho quando um comando nativo falha: cada um tem o código de saída conferido.
 function Assert-NativeSuccess([string] $Message) {
     if ($LASTEXITCODE -ne 0) { throw "$Message (código de saída $LASTEXITCODE)." }
+}
+
+# Com um emulador aberto, o sdkmanager e o avdmanager não conseguem trocar arquivos em uso.
+if (Get-Process -Name 'qemu-system-x86_64' -ErrorAction SilentlyContinue) {
+    throw 'Há um emulador aberto; feche-o (adb emu kill) e rode o script de novo. O emulador "dbvprovas" é recriado do zero.'
 }
 
 # Ordena pastas pelo número de versão do nome (21.0.12 vem depois de 21.0.8); sem número, vai por último.
@@ -18,10 +23,21 @@ function Get-VersionKey([string] $Name) {
     if ($match.Success) { [version] $match.Value } else { [version] '0.0' }
 }
 
+# Um JDK vale se tiver bin\java.exe e o arquivo release disser versão 21.
+function Test-Jdk21([string] $Path) {
+    if (-not $Path -or -not (Test-Path (Join-Path $Path 'bin\java.exe'))) { return $false }
+    $release = Join-Path $Path 'release'
+    (Test-Path $release) -and [bool](Select-String -Path $release -Pattern '^JAVA_VERSION="21\.' -Quiet)
+}
+
+# Primeiro o JAVA_HOME (do processo ou do usuário), que pode apontar para fora do caminho padrão.
 function Find-Jdk {
+    foreach ($candidate in $env:JAVA_HOME, [Environment]::GetEnvironmentVariable('JAVA_HOME', 'User')) {
+        if (Test-Jdk21 $candidate) { return $candidate }
+    }
     if (-not (Test-Path $jdkParent)) { return }
     Get-ChildItem $jdkParent -Directory -Filter 'jdk-21*' |
-        Where-Object { Test-Path (Join-Path $_.FullName 'bin\java.exe') } |
+        Where-Object { Test-Jdk21 $_.FullName } |
         Sort-Object { Get-VersionKey $_.Name } -Descending |
         Select-Object -First 1 -ExpandProperty FullName
 }
@@ -50,19 +66,19 @@ else {
         throw 'winget não encontrado; instale o JDK 21 (Microsoft OpenJDK) e rode o script de novo.'
     }
     winget install --id Microsoft.OpenJDK.21 --exact --accept-source-agreements --accept-package-agreements
-    Assert-NativeSuccess 'Falha ao instalar o JDK 21 com o winget'
+    Assert-NativeSuccess 'Falha ao instalar o JDK 21 com o winget (se ele já estiver instalado fora do caminho padrão, aponte o JAVA_HOME para a pasta dele e rode de novo)'
     $jdkInstalledNow = $true
     $jdk = Find-Jdk
-    if (-not $jdk) { throw "JDK 21 não encontrado em $jdkParent." }
+    if (-not $jdk) { throw "O winget terminou, mas nenhum JDK 21 apareceu em $jdkParent; se ele foi instalado em outro lugar, aponte o JAVA_HOME para a pasta dele e rode de novo." }
 }
 
 dotnet workload install maui-android
 Assert-NativeSuccess 'Falha ao instalar o workload maui-android'
 
 # O próprio build do .NET instala o SDK; um projeto descartável basta para isso.
-$probe = Join-Path $env:TEMP 'dbv-android-deps'
+# O projeto descartável vai numa pasta nova a cada execução; apagá-la no fim é só limpeza e não derruba o script.
+$probe = Join-Path $env:TEMP ('dbv-android-deps-' + [guid]::NewGuid().ToString('N'))
 try {
-    if (Test-Path $probe) { Remove-Item -Recurse -Force $probe }
     $created = dotnet new android -o $probe 2>&1
     if ($LASTEXITCODE -ne 0) { $created | Write-Host }
     Assert-NativeSuccess 'Falha ao criar o projeto descartável do Android'
@@ -70,7 +86,10 @@ try {
     Assert-NativeSuccess 'Falha ao instalar o Android SDK pelo build do .NET'
 }
 finally {
-    if (Test-Path $probe) { Remove-Item -Recurse -Force $probe }
+    if (Test-Path $probe) {
+        Remove-Item -Recurse -Force $probe -ErrorAction SilentlyContinue
+        if (Test-Path $probe) { Write-Warning "Não foi possível apagar $probe; apague a pasta à mão." }
+    }
 }
 
 [Environment]::SetEnvironmentVariable('ANDROID_HOME', $sdk, 'User')
