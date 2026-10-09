@@ -42,7 +42,10 @@ function Test-Jdk21([string] $Path) {
 # Primeiro o JAVA_HOME (do processo ou do usuário), que pode apontar para fora do caminho padrão.
 function Find-Jdk {
     foreach ($candidate in $env:JAVA_HOME, [Environment]::GetEnvironmentVariable('JAVA_HOME', 'User')) {
-        $path = "$candidate".Trim().Trim('"')
+        # Só caminho absoluto, porque o valor é gravado no escopo do usuário.
+        $path = "$candidate".Trim().Trim('"').Trim()
+        if (-not $path -or -not [IO.Path]::IsPathFullyQualified($path)) { continue }
+        $path = [IO.Path]::TrimEndingDirectorySeparator($path)
         if (Test-Jdk21 $path) { return $path }
     }
     if (-not (Test-Path $jdkParent)) { return }
