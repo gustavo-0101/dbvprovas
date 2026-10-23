@@ -85,17 +85,30 @@ jobs:
         run: gitleaks git --redact --no-banner --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" .
       - name: Fronteira nos arquivos (PC-16)
         run: dotnet run --file tools/pc16-check.cs -- all --ci
+      # Os textos gerados pelo Dependabot ficam fora da conferência de fronteira: no PR aberto por ele, o commit de autor
+      # dependabot[bot] assinado pelo próprio GitHub (committer web-flow); o autor sozinho se forja e a verificação vale para
+      # o committer. Qualquer outro commit, inclusive um amend do commit dele, continua conferido (CA-PRV-002, RNF-PRV-005).
       - name: Fronteira nas mensagens dos commits
-        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+        if: github.event_name == 'pull_request'
         env:
           RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
         run: |
           git log --format=%B "$RANGE" | gitleaks stdin --redact --no-banner
           for sha in $(git rev-list "$RANGE"); do
+            if [ "$PR_USER" = "dependabot[bot]" ]; then
+              origin=$(gh api "repos/$REPO/commits/$sha" --jq '"\(.author.login) \(.committer.login) \(.commit.verification.verified) \(.commit.verification.reason)"')
+              if [ "$origin" = "dependabot[bot] web-flow true valid" ]; then
+                continue
+              fi
+            fi
             git log -1 --format=%B "$sha" | dotnet run --file tools/pc16-check.cs -- text --ci
           done
+      # O título e a descrição do PR aberto pelo Dependabot são gerados por ele; os dos outros PRs são conferidos (CA-PRV-002).
       - name: Fronteira no título e na descrição do PR
-        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
