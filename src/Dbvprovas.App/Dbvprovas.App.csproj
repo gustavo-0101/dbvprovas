@@ -15,7 +15,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <!-- Versão do Microsoft.Maui.Essentials cujo nome interno do arquivo de preferências do SecureStorage foi conferido (RNF-TEN-004). -->
-    <VerifiedMauiVersion>10.0.110</VerifiedMauiVersion>
+    <VerifiedMauiVersion>10.0.120</VerifiedMauiVersion>
   </PropertyGroup>
   <!--
     O SecureSessionStore apaga por nome o arquivo do SecureStorage, que vive no Microsoft.Maui.Essentials: um alias interno
