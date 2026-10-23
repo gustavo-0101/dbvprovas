@@ -98,12 +98,15 @@ jobs:
         run: |
           git log --format=%B "$RANGE" | gitleaks stdin --redact --no-banner
           for sha in $(git rev-list "$RANGE"); do
-            origin=$(gh api "repos/$REPO/commits/$sha" --jq '"\(.author.login) \(.committer.login) \(.commit.verification.verified) \(.commit.verification.reason)"')
-            if [ "$PR_USER" = "dependabot[bot]" ] && [ "$origin" = "dependabot[bot] web-flow true valid" ]; then
-              continue
+            if [ "$PR_USER" = "dependabot[bot]" ]; then
+              origin=$(gh api "repos/$REPO/commits/$sha" --jq '"\(.author.login) \(.committer.login) \(.commit.verification.verified) \(.commit.verification.reason)"')
+              if [ "$origin" = "dependabot[bot] web-flow true valid" ]; then
+                continue
+              fi
             fi
             git log -1 --format=%B "$sha" | dotnet run --file tools/pc16-check.cs -- text --ci
           done
+      # O título e a descrição do PR aberto pelo Dependabot são gerados por ele; os dos outros PRs são conferidos (CA-PRV-002).
       - name: Fronteira no título e na descrição do PR
         if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
         env:
