@@ -1,7 +1,7 @@
 namespace Dbvprovas.Contracts;
 
 // Rotas relativas à origem da API (RNF-PRV-002).
-public static class ApiRoutes
+public static partial class ApiRoutes
 {
     public const string Me = "api/me";
     public const string DevAccounts = "api/dev/accounts";
