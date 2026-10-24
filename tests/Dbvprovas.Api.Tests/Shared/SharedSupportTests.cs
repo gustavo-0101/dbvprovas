@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using Dbvprovas.Api.Infrastructure;
 using Dbvprovas.Api.Modules.Tenancy;
@@ -6,6 +7,8 @@ using Dbvprovas.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Npgsql;
 using Xunit.Sdk;
 
 namespace Dbvprovas.Api.Tests.Shared;
@@ -76,6 +79,7 @@ public sealed class SharedSupportTests(PostgresFixture db)
         await ProblemAssert.HasCodeAsync(response, status, code);
     }
 
+    // D-125: o ProblemAssert não aceita um código diferente do esperado.
     [Fact]
     public async Task Problem_assert_refuses_a_different_code()
     {
@@ -85,23 +89,76 @@ public sealed class SharedSupportTests(PostgresFixture db)
             ProblemAssert.HasCodeAsync(response, HttpStatusCode.Conflict, ProblemCodes.PendingRequestExists));
     }
 
-    // CA-AUD-004: a sonda só vale se aceitar uma execução limpa e acusar um valor que esteja num dos canais.
+    // CA-AUD-004: a sonda aceita uma execução limpa, com logs e traces capturados.
     [Fact]
-    public async Task Leak_probe_accepts_a_clean_run_and_flags_a_tracked_value_found_in_the_logs()
+    public async Task Leak_probe_accepts_a_clean_run()
     {
         using var probe = new LeakProbe();
         await using var api = new ApiFactory(db, "Production");
-        using var client = api.CreateClient();
-        using (var ready = await client.GetAsync("/health/ready"))
-        {
-            Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
-            await ready.Content.ReadAsStringAsync();
-        }
+        await ReadyAsync(api);
 
         probe.AssertAbsent(api);
-        probe.Track("Microsoft.AspNetCore");
+    }
 
+    public enum LeakChannel
+    {
+        Log,
+        Trace,
+        ErrorBody,
+    }
+
+    // CA-AUD-004: um valor rastreado presente em apenas um dos canais (log, trace ou corpo de erro) já faz a sonda falhar.
+    [Theory]
+    [InlineData(LeakChannel.Log)]
+    [InlineData(LeakChannel.Trace)]
+    [InlineData(LeakChannel.ErrorBody)]
+    public async Task Leak_probe_flags_a_tracked_value_present_in_only_one_channel(LeakChannel channel)
+    {
+        using var probe = new LeakProbe();
+        await using var api = new ApiFactory(db, "Production");
+        await ReadyAsync(api);
+        var value = $"valor-unico-{Guid.NewGuid():N}";
+        probe.Track(value);
+
+        switch (channel)
+        {
+            case LeakChannel.Log:
+                api.Logs.CreateLogger("Dbvprovas.Tests.LeakProbe").LogInformation("probe {Value}", value);
+                break;
+            case LeakChannel.Trace:
+                using (var source = new ActivitySource("Dbvprovas.Tests.LeakProbe"))
+                using (var activity = source.StartActivity("probe"))
+                    activity?.SetTag("probe.value", value);
+                break;
+            default:
+                probe.ErrorBodies.Add($"{{\"detail\":\"{value}\"}}");
+                break;
+        }
+
+        Assert.Equal(channel == LeakChannel.Log, api.Logs.Logs.Any(log => log.Text.Contains(value, StringComparison.Ordinal)));
+        Assert.Equal(channel == LeakChannel.Trace, probe.Traces.Items.Any(text => text.Contains(value, StringComparison.Ordinal)));
+        Assert.Equal(channel == LeakChannel.ErrorBody, probe.ErrorBodies.Any(text => text.Contains(value, StringComparison.Ordinal)));
         Assert.ThrowsAny<XunitException>(() => probe.AssertAbsent(api));
+    }
+
+    // RNF-AUD-007: se a trava falha depois de abrir a conexão (tabela inexistente), a conexão e a transação não ficam abertas.
+    [Fact]
+    public async Task Lock_hold_releases_the_connection_when_the_lock_statement_fails()
+    {
+        var table = $"missing_{Guid.NewGuid():N}";
+
+        await Assert.ThrowsAsync<PostgresException>(() => LockHold.ForUpdateAsync(db, table, Guid.CreateVersion7()));
+
+        Assert.Equal(0, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM pg_stat_activity WHERE state LIKE 'idle in transaction%' AND query LIKE @pattern", ("pattern", $"%{table}%")));
+    }
+
+    private static async Task ReadyAsync(ApiFactory api)
+    {
+        using var client = api.CreateClient();
+        using var ready = await client.GetAsync("/health/ready");
+        Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+        await ready.Content.ReadAsStringAsync();
     }
 
     private static async Task<HttpResponseMessage> ExecuteAsync(IResult result)

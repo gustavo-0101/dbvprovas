@@ -10,6 +10,7 @@ using Dbvprovas.Contracts;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Dbvprovas.Api.Tests.Shared;
 
@@ -47,10 +48,54 @@ public sealed class SharedServicesTests(PostgresFixture db)
 
         Assert.Equal(0, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
             "SELECT count(*) FROM role_assignments WHERE membership_id = @m AND ended_at IS NULL", ("m", a.Aurora.MembershipId)));
+        Assert.Equal(2, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString, """
+            SELECT count(*) FROM role_assignments
+            WHERE membership_id = @m AND ended_at IS NOT NULL AND ended_by_person_id = @actor AND end_cause = 'ConsentRevoked'
+            """, ("m", a.Aurora.MembershipId), ("actor", a.Caio.PersonId)));
         Assert.Equal(2, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
             "SELECT count(*) FROM audit_entries WHERE action = 'RoleEnded' AND cause = 'ConsentRevoked' AND club_id = @c", ("c", a.ClubId)));
         Assert.Equal("Cancelled", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
             "SELECT status FROM director_nominations WHERE id = @id", ("id", nomination)));
+        Assert.True(await OwnerSql.ScalarAsync<bool>(db.OwnerConnectionString,
+            "SELECT closed_at IS NOT NULL FROM director_nominations WHERE id = @id", ("id", nomination)));
+        Assert.Equal(1, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString, """
+            SELECT count(*) FROM audit_entries
+            WHERE action = 'DirectorNominationCancelled' AND target_type = 'DirectorNomination' AND target_id = @id
+                AND cause = 'ConsentRevoked' AND club_id = @c AND actor_person_id = @actor
+            """, ("id", nomination), ("c", a.ClubId), ("actor", a.Caio.PersonId)));
+    }
+
+    // D-158, D-163: encerrar cargos que não incluem o de diretor não mexe na indicação pendente feita por ele.
+    [Fact]
+    public async Task Role_termination_without_the_director_role_keeps_the_pending_nomination()
+    {
+        var a = await TestData.CreateClubAAsync(db);
+        await TestData.AssignRoleAsync(db, a.Aurora, RoleCode.Chaplain);
+        var nomination = Guid.CreateVersion7();
+        await OwnerSql.ExecuteAsync(db.OwnerConnectionString, """
+            INSERT INTO director_nominations (id, club_id, nominator_membership_id, nominee_membership_id, status, created_at, expires_at)
+                VALUES (@id, @club, @aurora, @caio, 'Pending', now(), now() + interval '7 days')
+            """, ("id", nomination), ("club", a.ClubId), ("aurora", a.Aurora.MembershipId), ("caio", a.Caio.MembershipId));
+        await using var services = DbScope.Create(db);
+        var (scope, app) = InClub(services, a.ClubId, a.Caio.PersonId);
+        await using (scope)
+        {
+            var ended = await scope.ServiceProvider.GetRequiredService<RoleTermination>().EndAsync(a.Aurora.MembershipId,
+                role => role == RoleCode.Chaplain, EndCause.ConsentRevoked, a.Caio.PersonId, CancellationToken.None);
+            await app.SaveChangesAsync();
+            Assert.Equal(1, ended);
+        }
+
+        Assert.Equal("Director", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
+            "SELECT role FROM role_assignments WHERE membership_id = @m AND ended_at IS NULL", ("m", a.Aurora.MembershipId)));
+        Assert.Equal("Pending", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
+            "SELECT status FROM director_nominations WHERE id = @id", ("id", nomination)));
+        Assert.True(await OwnerSql.ScalarAsync<bool>(db.OwnerConnectionString,
+            "SELECT closed_at IS NULL FROM director_nominations WHERE id = @id", ("id", nomination)));
+        Assert.Equal(0, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM audit_entries WHERE action = 'DirectorNominationCancelled' AND club_id = @c", ("c", a.ClubId)));
+        Assert.Equal(1, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM audit_entries WHERE action = 'RoleEnded' AND club_id = @c", ("c", a.ClubId)));
     }
 
     // D-158: encerrar só alguns cargos mantém os demais.
@@ -82,21 +127,29 @@ public sealed class SharedServicesTests(PostgresFixture db)
 
         async Task<bool> FirstAsync()
         {
-            await using var scope = services.CreateAsyncScope();
-            scope.ServiceProvider.GetRequiredService<ClubContext>().PersonId = person.PersonId;
-            var app = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await using var tx = await app.Database.BeginTransactionAsync();
-            var acquired = await PendingRequestGuard.TryAcquireAsync(app, person.PersonId, DateTimeOffset.UtcNow, CancellationToken.None);
-            started.SetResult();
-            app.FoundingRequests.Add(new FoundingRequest
+            try
             {
-                Id = Guid.CreateVersion7(), RequesterPersonId = person.PersonId, RequesterAccountId = person.AccountId,
-                ClubName = "Clube Pendente", ClubCity = "Cidade", ProposedClubId = Guid.CreateVersion7(), CreatedAt = DateTimeOffset.UtcNow,
-            });
-            await Task.Delay(500);
-            await app.SaveChangesAsync();
-            await tx.CommitAsync();
-            return acquired;
+                await using var scope = services.CreateAsyncScope();
+                scope.ServiceProvider.GetRequiredService<ClubContext>().PersonId = person.PersonId;
+                var app = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                await using var tx = await app.Database.BeginTransactionAsync();
+                var acquired = await PendingRequestGuard.TryAcquireAsync(app, person.PersonId, DateTimeOffset.UtcNow, CancellationToken.None);
+                started.TrySetResult();
+                app.FoundingRequests.Add(new FoundingRequest
+                {
+                    Id = Guid.CreateVersion7(), RequesterPersonId = person.PersonId, RequesterAccountId = person.AccountId,
+                    ClubName = "Clube Pendente", ClubCity = "Cidade", ProposedClubId = Guid.CreateVersion7(), CreatedAt = DateTimeOffset.UtcNow,
+                });
+                await Task.Delay(500);
+                await app.SaveChangesAsync();
+                await tx.CommitAsync();
+                return acquired;
+            }
+            finally
+            {
+                // Se o primeiro falhar antes de liberar o segundo, o teste falha em vez de ficar esperando para sempre.
+                started.TrySetResult();
+            }
         }
 
         async Task<bool> SecondAsync()
@@ -114,12 +167,14 @@ public sealed class SharedServicesTests(PostgresFixture db)
         Assert.Equal(new[] { true, false }, results);
     }
 
-    // D-011, PC-06: a diretoria que recebe avisos tem cargo de diretoria vigente, participação ativa e 18+.
+    // D-011, PC-06: a diretoria que recebe avisos tem cargo de diretoria vigente, participação ativa e 18+;
+    // sem data de nascimento a idade é desconhecida e nunca conta como 18+.
     [Fact]
     public async Task Notifier_board_includes_only_adult_active_board_members()
     {
         var a = await TestData.CreateClubAAsync(db);
         await TestData.CreateMemberAsync(db, a.ClubId, "Menor", age: 17, role: RoleCode.AssociateDirector);
+        await TestData.CreateMemberAsync(db, a.ClubId, "Sem Data", age: null, role: RoleCode.Pastor);
         var suspended = await TestData.AddMemberAsync(db, a.ClubId, await TestData.CreatePersonAsync(db, "Suspensa"), MembershipStatus.Suspended);
         await TestData.AssignRoleAsync(db, suspended, RoleCode.Chaplain);
         await using var services = DbScope.Create(db);
@@ -199,6 +254,30 @@ public sealed class SharedServicesTests(PostgresFixture db)
         }
 
         Assert.Equal("Unidade Y", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString, "SELECT name FROM units WHERE id = @u", ("u", a.UnitY)));
+    }
+
+    // CA-AUD-010: o banco recusa a auditoria de outro ator (RLS, 42501) com o clube certo; a mudança da unidade no mesmo SaveChanges também não fica.
+    [Fact]
+    public async Task Audit_refused_by_the_database_discards_the_change_too()
+    {
+        var a = await TestData.CreateClubAAsync(db);
+        await using var services = DbScope.Create(db);
+        var (scope, app) = InClub(services, a.ClubId, a.Aurora.PersonId);
+        await using (scope)
+        {
+            var unit = await app.Units.SingleAsync(u => u.Id == a.UnitY);
+            unit.Name = "Nome Novo";
+            scope.ServiceProvider.GetRequiredService<AuditLog>().Record(AuditAction.RoleAssigned, AuditTarget.Membership,
+                Guid.CreateVersion7(), a.ClubId, AuditScope.Club, a.Caio.PersonId);
+
+            var error = await Assert.ThrowsAsync<DbUpdateException>(() => app.SaveChangesAsync());
+            var refusal = Assert.IsType<PostgresException>(error.InnerException);
+            Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, refusal.SqlState);
+        }
+
+        Assert.Equal("Unidade Y", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString, "SELECT name FROM units WHERE id = @u", ("u", a.UnitY)));
+        Assert.Equal(0, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM audit_entries WHERE club_id = @c", ("c", a.ClubId)));
     }
 
     // D-125: o resultado de domínio vira o contrato HTTP do R1.

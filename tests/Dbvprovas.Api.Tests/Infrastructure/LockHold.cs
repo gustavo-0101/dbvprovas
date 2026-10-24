@@ -20,12 +20,23 @@ public sealed class LockHold : IAsyncDisposable
     public static async Task<LockHold> ForUpdateAsync(PostgresFixture db, string table, Guid id)
     {
         var connection = new NpgsqlConnection(db.OwnerConnectionString);
-        await connection.OpenAsync();
-        var transaction = await connection.BeginTransactionAsync();
-        await using var command = new NpgsqlCommand($"SELECT 1 FROM {table} WHERE id = @id FOR UPDATE", connection, transaction);
-        command.Parameters.AddWithValue("id", id);
-        await command.ExecuteNonQueryAsync();
-        return new LockHold(db, connection, transaction);
+        NpgsqlTransaction? transaction = null;
+        try
+        {
+            await connection.OpenAsync();
+            transaction = await connection.BeginTransactionAsync();
+            await using var command = new NpgsqlCommand($"SELECT 1 FROM {table} WHERE id = @id FOR UPDATE", connection, transaction);
+            command.Parameters.AddWithValue("id", id);
+            await command.ExecuteNonQueryAsync();
+            return new LockHold(db, connection, transaction);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+            await connection.DisposeAsync();
+            throw;
+        }
     }
 
     // Espera até 10 s alguma sessão do app ficar parada esperando a trava DESTA conexão. O dono não vê o wait_event das
