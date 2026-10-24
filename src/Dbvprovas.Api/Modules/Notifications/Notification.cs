@@ -1,9 +1,10 @@
+using Dbvprovas.Api.Modules.Tenancy;
 using Dbvprovas.Contracts;
 
 namespace Dbvprovas.Api.Modules.Notifications;
 
 // Aviso na caixa pessoal (RN-NTF-001, D-145): evento e IDs. O ObjectId identifica a ocorrência.
-public sealed class Notification
+public sealed class Notification : IMaybeClubOwned
 {
     public Guid Id { get; init; }
     public Guid RecipientPersonId { get; init; }

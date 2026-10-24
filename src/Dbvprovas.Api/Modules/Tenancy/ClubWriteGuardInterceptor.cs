@@ -29,6 +29,7 @@ public sealed class ClubWriteGuardInterceptor(ClubContext context) : SaveChanges
             {
                 IClubOwned owned => owned.ClubId != context.ClubId,
                 IMaybeClubOwned maybe => maybe.ClubId is { } club && club != context.ClubId,
+                Club target => target.Id != context.ClubId,
                 _ => false,
             });
         if (outside)

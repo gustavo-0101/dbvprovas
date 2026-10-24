@@ -1,8 +1,10 @@
 using Dbvprovas.Api.Infrastructure;
 using Dbvprovas.Api.Modules.Audit;
+using Dbvprovas.Api.Modules.Notifications;
 using Dbvprovas.Api.Modules.Organization;
 using Dbvprovas.Api.Modules.Privacy;
 using Dbvprovas.Api.Modules.Tenancy;
+using Dbvprovas.Api.Modules.Tenancy.Founding;
 using Dbvprovas.Api.Tests.Infrastructure;
 using Dbvprovas.Contracts;
 using Microsoft.EntityFrameworkCore;
@@ -351,10 +353,10 @@ public sealed class R1IsolationTests(PostgresFixture db)
         var clubScope = scope.ServiceProvider.GetRequiredService<ClubScope>();
         await using var tx = await app.Database.BeginTransactionAsync();
 
-        Assert.All(await app.Units.IgnoreQueryFilters().Select(u => u.ClubId).ToListAsync(), c => Assert.Equal(world.A.ClubId, c));
+        Assert.Equal(new[] { world.A.UnitX, world.A.UnitY }.Order(), (await app.Units.IgnoreQueryFilters().Select(u => u.Id).ToListAsync()).Order());
         await clubScope.EnterAsync(world.B.ClubId, CancellationToken.None);
-        Assert.All(await app.Units.IgnoreQueryFilters().Select(u => u.ClubId).ToListAsync(), c => Assert.Equal(world.B.ClubId, c));
-        Assert.All(await app.Units.Select(u => u.ClubId).ToListAsync(), c => Assert.Equal(world.B.ClubId, c));
+        Assert.Equal([world.B.UnitZ], await app.Units.IgnoreQueryFilters().Select(u => u.Id).ToListAsync());
+        Assert.Equal([world.B.UnitZ], await app.Units.Select(u => u.Id).ToListAsync());
 
         app.Units.Add(new Unit { Id = Guid.CreateVersion7(), ClubId = world.B.ClubId, Name = "Nova", Sex = Sex.Male, MinAge = 10, MaxAge = 12 });
         await Assert.ThrowsAsync<InvalidOperationException>(() => clubScope.EnterAsync(world.A.ClubId, CancellationToken.None));
@@ -378,6 +380,59 @@ public sealed class R1IsolationTests(PostgresFixture db)
             TargetType = AuditTarget.Membership, TargetId = Guid.CreateVersion7(), OccurredAt = DateTimeOffset.UtcNow,
         });
         await Assert.ThrowsAsync<ClubIsolationException>(() => app.SaveChangesAsync());
+        app.ChangeTracker.Clear();
+
+        var platform = new AuditEntry
+        {
+            Id = Guid.CreateVersion7(), ClubId = null, Scope = AuditScope.Platform, Action = AuditAction.FoundingRequested,
+            TargetType = AuditTarget.FoundingRequest, TargetId = world.FoundingA, OccurredAt = DateTimeOffset.UtcNow,
+        };
+        var own = new AuditEntry
+        {
+            Id = Guid.CreateVersion7(), ClubId = world.A.ClubId, Scope = AuditScope.Club, Action = AuditAction.RoleAssigned,
+            TargetType = AuditTarget.Membership, TargetId = world.A.Iara.MembershipId, OccurredAt = DateTimeOffset.UtcNow,
+        };
+        app.AuditEntries.AddRange(platform, own);
+        Assert.Equal(2, await app.SaveChangesAsync());
+        Assert.Equal(2L, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM audit_entries WHERE id IN (@platform, @own)", ("platform", platform.Id), ("own", own.Id)));
+    }
+
+    // O guarda também cobre o aviso, o registro de fundação e o próprio clube: com o contexto em A, o que é de B é barrado e o
+    // que é de A é gravado. Papel dono, sem RLS, para ver só a primeira barreira (RN-TEN-001, D-124).
+    [Fact]
+    public async Task CA_TEN_001_Write_guard_checks_notifications_founding_records_and_clubs()
+    {
+        var world = await CreateWorldAsync();
+        var context = new ClubContext { ClubId = world.A.ClubId, PersonId = world.A.Aurora.PersonId };
+        await using var owner = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(db.OwnerConnectionString).AddInterceptors(new ClubWriteGuardInterceptor(context)).Options, context);
+        Notification NotificationIn(Guid club) => new()
+        {
+            Id = Guid.CreateVersion7(), RecipientPersonId = world.A.Iara.PersonId, Event = NotificationEvent.JoinQueued,
+            ClubId = club, ObjectId = Guid.CreateVersion7(), CreatedAt = DateTimeOffset.UtcNow,
+        };
+        FoundingRecord RecordIn(Guid club) => new()
+        {
+            Id = Guid.CreateVersion7(), PersonId = world.Requester, ClubId = club, ApprovedAt = DateTimeOffset.UtcNow,
+        };
+
+        owner.Notifications.Add(NotificationIn(world.B.ClubId));
+        await Assert.ThrowsAsync<ClubIsolationException>(() => owner.SaveChangesAsync());
+        owner.ChangeTracker.Clear();
+        owner.FoundingRecords.Add(RecordIn(world.B.ClubId));
+        await Assert.ThrowsAsync<ClubIsolationException>(() => owner.SaveChangesAsync());
+        owner.ChangeTracker.Clear();
+        (await owner.Clubs.IgnoreQueryFilters().SingleAsync(c => c.Id == world.B.ClubId)).Name = "Clube Alterado";
+        await Assert.ThrowsAsync<ClubIsolationException>(() => owner.SaveChangesAsync());
+        owner.ChangeTracker.Clear();
+
+        owner.Notifications.Add(NotificationIn(world.A.ClubId));
+        owner.FoundingRecords.Add(RecordIn(world.A.ClubId));
+        (await owner.Clubs.SingleAsync(c => c.Id == world.A.ClubId)).Name = "Clube Renomeado";
+        Assert.Equal(3, await owner.SaveChangesAsync());
+        Assert.Equal("Clube Corujas", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
+            "SELECT name FROM clubs WHERE id = @b", ("b", world.B.ClubId)));
     }
 
     // 100 escopos alternando A e B pelo mesmo pool de 4 conexões nunca misturam o clube (CA-TEN-001 g, RSK-TEN-001).
@@ -400,7 +455,8 @@ public sealed class R1IsolationTests(PostgresFixture db)
         Assert.All(results, ok => Assert.True(ok));
     }
 
-    // O papel de admin chega ao banco a cada abertura de conexão, e a conexão reaproveitada do pool não o herda (CA-TEN-001, RNF-TEN-006).
+    // O papel de admin do contexto chega ao banco quando a conexão abre, e um escopo sem o papel, na mesma conexão física do pool,
+    // não o vê (CA-TEN-001, RNF-TEN-006).
     [Fact]
     public async Task CA_TEN_001_R1_session_carries_platform_admin_only_for_admin_scopes()
     {
