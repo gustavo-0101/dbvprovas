@@ -53,7 +53,7 @@ public sealed class PersonalDataLeakTests(PostgresFixture db)
         await using var faulty = new ApiFactory(db, "Production") { UseTestAuthentication = true };
         faulty.ExtraInterceptors.Add(new FailingCommandInterceptor("persons"));
         using var faultyClient = faulty.CreateClient();
-        faultyClient.DefaultRequestHeaders.Add(TestAuthHandler.PersonHeader, member.PersonId.ToString());
+        faultyClient.DefaultRequestHeaders.Add(TestAuthHandler.AccountHeader, member.AccountId.ToString());
         using (var failure = await faultyClient.GetAsync(ApiRoutes.Me))
         {
             Assert.Equal(HttpStatusCode.InternalServerError, failure.StatusCode);

@@ -49,7 +49,7 @@ public sealed class HttpPrivacyTests(PostgresFixture db)
             await using var host = api.WithWebHostBuilder(builder => builder.ConfigureLogging(logging =>
                 logging.AddFilter<ConsoleLoggerProvider>(null, LogLevel.Trace)));
             using var client = host.CreateClient();
-            client.DefaultRequestHeaders.Add(TestAuthHandler.PersonHeader, DevSeed.AuroraPerson.ToString());
+            client.DefaultRequestHeaders.Add(TestAuthHandler.AccountHeader, DevSeed.AuroraAccount.ToString());
             client.DefaultRequestHeaders.Host = sentinel + ".example.test";
             client.DefaultRequestHeaders.Add("User-Agent", sentinel);
             client.DefaultRequestHeaders.Add("traceparent", "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01");

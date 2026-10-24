@@ -1,3 +1,4 @@
+using Dbvprovas.Api.Modules.Organization;
 using Dbvprovas.Api.Modules.Tenancy;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -10,6 +11,8 @@ public static class CoreServices
     {
         services.TryAddSingleton(TimeProvider.System); // PC-12
         services.AddScoped<ClubScope>();
+        services.AddOptions<JobOptions>().BindConfiguration(JobOptions.Section);
+        services.AddScoped<ActorService>();
         return services;
     }
 }

@@ -15,7 +15,7 @@ public sealed class ErrorResponseTests(PostgresFixture db)
         await using var api = new ApiFactory(db, "Production") { UseTestAuthentication = true };
         api.ExtraInterceptors.Add(new FailingCommandInterceptor("persons"));
         using var client = api.CreateClient();
-        client.DefaultRequestHeaders.Add(TestAuthHandler.PersonHeader, DevSeed.AuroraPerson.ToString());
+        client.DefaultRequestHeaders.Add(TestAuthHandler.AccountHeader, DevSeed.AuroraAccount.ToString());
 
         using var response = await client.GetAsync(ApiRoutes.Me);
         var body = await response.Content.ReadAsStringAsync();

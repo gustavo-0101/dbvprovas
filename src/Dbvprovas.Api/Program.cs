@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddObservability(); // D-115, D-116
 builder.Services.AddDatabase(); // RNF-TEN-001
+builder.Services.AddR1Core(); // relógio, tarefas e serviços comuns do R1
 builder.AddSessions(); // D-120, RNF-TEN-002
 builder.Services.AddHealth(); // RF-AUD-001
 builder.Services.AddProblemDetails(); // RF-AUD-002
