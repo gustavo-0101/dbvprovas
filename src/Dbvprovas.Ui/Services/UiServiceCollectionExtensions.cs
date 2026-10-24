@@ -1,3 +1,4 @@
+using Dbvprovas.Ui.Services.Api;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dbvprovas.Ui.Services;
@@ -15,6 +16,13 @@ public static class UiServiceCollectionExtensions
         });
         services.AddScoped<SessionState>();
         services.AddScoped<ApiClient>();
+        services.AddScoped<IdentityApi>();
+        services.AddScoped<NotificationsApi>();
+        services.AddScoped<FoundingApi>();
+        services.AddScoped<OrganizationApi>();
+        services.AddScoped<JoiningApi>();
+        services.AddScoped<PrivacyApi>();
+        services.AddScoped<AuditApi>();
         return services;
     }
 }

@@ -11,15 +11,28 @@ public enum ApiError
     Unavailable,
     Unauthorized,
     NotFound,
+    Forbidden,
+    Conflict,
+    Invalid,
 }
 
-public sealed record ApiResult<T>(T? Value, ApiError? Error)
+public sealed record ApiResult<T>(T? Value, ApiError? Error, string? ProblemCode = null)
 {
     public bool IsOk => Error is null;
 
     public static ApiResult<T> Ok(T value) => new(value, null);
 
-    public static ApiResult<T> Fail(ApiError error) => new(default, error);
+    public static ApiResult<T> Fail(ApiError error, string? problemCode = null) => new(default, error, problemCode);
+}
+
+public sealed record ApiResult(ApiError? Error, string? ProblemCode = null)
+{
+    public bool IsOk => Error is null;
+
+    // O argumento nomeado evita o construtor de cópia do registro.
+    public static ApiResult Ok() => new(Error: null);
+
+    public static ApiResult Fail(ApiError error, string? problemCode = null) => new(error, problemCode);
 }
 
 // Cliente da API, igual no app e no site (RNF-TEN-004). As falhas viram estados que a tela
@@ -41,7 +54,34 @@ public sealed class ApiClient(HttpClient http, SessionState session)
     public Task<ApiResult<List<MemberResponse>>> GetMembersAsync(Guid clubId) =>
         SendAsync<List<MemberResponse>>(HttpMethod.Get, ApiRoutes.Members(clubId));
 
-    private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string path, object? body = null)
+    public async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string path, object? body = null)
+    {
+        var (response, error, code) = await ExchangeAsync(method, path, body);
+        using (response)
+        {
+            if (error is not null)
+                return ApiResult<T>.Fail(error.Value, code);
+            try
+            {
+                // Um 2xx com corpo que não serve (página de proxy, corpo nulo) é o mesmo que sem servidor.
+                var value = await response!.Content.ReadFromJsonAsync<T>();
+                return value is null ? ApiResult<T>.Fail(ApiError.Unavailable) : ApiResult<T>.Ok(value);
+            }
+            catch (Exception e) when (e is JsonException or NotSupportedException or HttpRequestException or WebException or TaskCanceledException)
+            {
+                return ApiResult<T>.Fail(ApiError.Unavailable);
+            }
+        }
+    }
+
+    public async Task<ApiResult> SendAsync(HttpMethod method, string path, object? body = null)
+    {
+        var (response, error, code) = await ExchangeAsync(method, path, body);
+        response?.Dispose();
+        return error is null ? ApiResult.Ok() : ApiResult.Fail(error.Value, code);
+    }
+
+    private async Task<(HttpResponseMessage? Response, ApiError? Error, string? Code)> ExchangeAsync(HttpMethod method, string path, object? body)
     {
         try
         {
@@ -51,25 +91,43 @@ public sealed class ApiClient(HttpClient http, SessionState session)
             if (body is not null)
                 request.Content = JsonContent.Create(body);
 
-            using var response = await http.SendAsync(request);
+            var response = await http.SendAsync(request);
             if (response.IsSuccessStatusCode)
-            {
-                // Um 2xx com corpo que não serve (página de proxy, corpo nulo) é o mesmo que sem servidor.
-                var value = await response.Content.ReadFromJsonAsync<T>();
-                return value is null ? ApiResult<T>.Fail(ApiError.Unavailable) : ApiResult<T>.Ok(value);
-            }
+                return (response, null, null);
 
-            return ApiResult<T>.Fail(response.StatusCode switch
+            var error = response.StatusCode switch
             {
                 HttpStatusCode.Unauthorized => ApiError.Unauthorized,
                 HttpStatusCode.NotFound => ApiError.NotFound,
+                HttpStatusCode.Forbidden => ApiError.Forbidden,
+                HttpStatusCode.Conflict => ApiError.Conflict,
+                HttpStatusCode.BadRequest => ApiError.Invalid,
                 _ => ApiError.Unavailable,
-            });
+            };
+            var code = error is ApiError.Forbidden or ApiError.Conflict or ApiError.Invalid ? await ReadProblemCodeAsync(response) : null;
+            response.Dispose();
+            return (null, error, code);
         }
         // WebException: no Android, socket fechado e prazo estourado sobem assim, não como HttpRequestException.
-        catch (Exception e) when (e is HttpRequestException or WebException or TaskCanceledException or JsonException or NotSupportedException)
+        catch (Exception e) when (e is HttpRequestException or WebException or TaskCanceledException)
         {
-            return ApiResult<T>.Fail(ApiError.Unavailable);
+            return (null, ApiError.Unavailable, null);
+        }
+    }
+
+    // O código estável do ProblemDetails (extensão "code", D-125); corpo inesperado vira código ausente.
+    private static async Task<string?> ReadProblemCodeAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty(ProblemCodes.Extension, out var code)
+                && code.ValueKind == JsonValueKind.String ? code.GetString() : null;
+        }
+        catch (Exception e) when (e is JsonException or HttpRequestException or WebException or TaskCanceledException)
+        {
+            return null;
         }
     }
 }
