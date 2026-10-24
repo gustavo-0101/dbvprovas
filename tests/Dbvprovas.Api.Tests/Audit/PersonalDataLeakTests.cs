@@ -7,6 +7,7 @@ using Dbvprovas.Api.Tests.Infrastructure;
 using Dbvprovas.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Dbvprovas.Api.Tests.Audit;
 
@@ -67,6 +68,24 @@ public sealed class PersonalDataLeakTests(PostgresFixture db)
         Assert.NotEmpty(traces.Items);
         var everything = logs.Select(log => log.Text).Concat(traces.Items).Concat(errorBodies);
         Assert.DoesNotContain(everything, text => text.Contains(sentinel, StringComparison.Ordinal));
+    }
+
+    // RNF-PRV-001, CA-AUD-004: um erro real do Postgres repete a entrada inválida na mensagem; ela não chega aos traces.
+    [Fact]
+    public async Task Database_error_message_never_reaches_traces()
+    {
+        var sentinel = $"Sentinel{Guid.NewGuid():N}";
+        using var traces = new ActivityCapture();
+        await using var api = new ApiFactory(db, "Production");
+        var dataSource = api.Services.GetRequiredService<NpgsqlDataSource>();
+        await using var command = dataSource.CreateCommand("SELECT @value::uuid");
+        command.Parameters.AddWithValue("value", sentinel);
+
+        var error = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteScalarAsync());
+
+        Assert.Contains(sentinel, error.MessageText);
+        Assert.Contains(traces.Items, item => item.Contains(error.SqlState, StringComparison.Ordinal));
+        Assert.DoesNotContain(traces.Items, item => item.Contains(sentinel, StringComparison.Ordinal));
     }
 
     // RNF-PRV-001

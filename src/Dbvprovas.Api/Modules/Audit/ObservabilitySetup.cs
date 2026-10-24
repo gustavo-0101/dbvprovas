@@ -25,6 +25,9 @@ public static class ObservabilitySetup
         builder.Logging.EnableRedaction();
         builder.Services.AddRedaction(r => r.SetRedactor<ErasingRedactor>(DataTaxonomy.PersonalData));
         builder.Services.ProtectLogInputs();
+        // RNF-PRV-001: nos traces, a exceção também chega só com o tipo e a pilha.
+        builder.Services.AddSingleton<TraceExceptionPrivacy>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<TraceExceptionPrivacy>());
 
         // D-115
         var telemetry = builder.Services.AddOpenTelemetry()
