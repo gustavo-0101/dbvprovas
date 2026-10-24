@@ -15,14 +15,18 @@ namespace Dbvprovas.Api.Tests.Tenancy;
 
 public sealed class EndpointPolicyTests(PostgresFixture db)
 {
+    // Cada rota anônima da API vale só com o próprio método: o mesmo caminho com outro método não entra.
     private static readonly string[] AnonymousApiRoutes =
     [
-        "/api/dev/accounts",
-        "/api/dev/sessions",
-        "/health/live",
-        "/health/ready",
-        "/openapi/{documentName}.json",
+        "GET /api/dev/accounts",
+        "POST /api/dev/sessions",
+        "GET /health/live",
+        "GET /health/ready",
+        "GET /openapi/{documentName}.json",
     ];
+
+    // O site e os arquivos estáticos são só leitura.
+    private static readonly string[] SiteMethods = ["GET", "HEAD"];
 
     // Páginas do site e o endpoint de redirecionamento do Blazor (D-112). Os arquivos estáticos entram
     // pelo marcador do MapStaticAssets e a lista de recursos pelo mapa de importação das páginas;
@@ -55,15 +59,36 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         Assert.NotEmpty(endpoints);
         var allowed = AnonymousRoutes(endpoints);
         foreach (var endpoint in endpoints)
-            Assert.True(HasExplicitPolicy(endpoint, allowed), $"Endpoint without explicit policy: {endpoint.RoutePattern.RawText}");
+            Assert.True(HasExplicitPolicy(endpoint, allowed),
+                $"Endpoint without explicit policy: {Methods(endpoint)} {endpoint.RoutePattern.RawText}");
     }
 
     [Fact]
     public void CA_TEN_006_Anonymous_endpoint_outside_allowlist_is_rejected()
     {
-        var builder = new RouteEndpointBuilder(_ => Task.CompletedTask, RoutePatternFactory.Parse("/export"), 0);
+        Assert.False(HasExplicitPolicy(AnonymousEndpoint("/export"), FixedRoutes()));
+    }
+
+    // Sem método declarado, o endpoint atende a qualquer método; anônimo assim não entra, nem numa rota da lista.
+    [Fact]
+    public void CA_TEN_006_Anonymous_endpoint_without_declared_methods_is_rejected()
+    {
+        var builder = new RouteEndpointBuilder(_ => Task.CompletedTask, RoutePatternFactory.Parse("/health/live"), 0);
         builder.Metadata.Add(new AllowAnonymousAttribute());
         Assert.False(HasExplicitPolicy((RouteEndpoint)builder.Build(), FixedRoutes()));
+    }
+
+    // A lista da API é de pares (método, rota), e o site só aceita leitura.
+    [Theory]
+    [InlineData("GET", "/health/live", true)]
+    [InlineData("POST", "/health/live", false)]
+    [InlineData("POST", "/api/dev/sessions", true)]
+    [InlineData("GET", "/api/dev/sessions", false)]
+    [InlineData("POST", "/club", false)]
+    public void CA_TEN_006_Anonymous_route_is_allowed_only_with_its_method(string method, string route, bool allowed)
+    {
+        var endpoint = AnonymousEndpoint(route, new HttpMethodMetadata([method]), new ComponentTypeMetadata(typeof(object)));
+        Assert.Equal(allowed, HasExplicitPolicy(endpoint, FixedRoutes()));
     }
 
     // O site só abre exceções por rota exata: nada sob /_framework, /_content ou /club entra por prefixo.
@@ -172,7 +197,11 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
 
     private static string Route(RouteEndpoint endpoint) => "/" + endpoint.RoutePattern.RawText!.TrimStart('/');
 
-    private static HashSet<string> FixedRoutes() => [.. AnonymousApiRoutes, .. AnonymousSiteRoutes];
+    private static string Methods(RouteEndpoint endpoint) =>
+        endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods is { Count: > 0 } methods ? string.Join(',', methods) : "*";
+
+    // As rotas anônimas do site; as da API são conferidas com o método, em AnonymousApiRoutes.
+    private static HashSet<string> FixedRoutes() => [.. AnonymousSiteRoutes];
 
     private static HashSet<string> AnonymousRoutes(IEnumerable<RouteEndpoint> endpoints)
     {
@@ -204,10 +233,13 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
             && !value.AsSpan(prefix.Length).Contains('/');
     }
 
+    // Endpoint anônimo de teste; sem método informado, é um GET.
     private static RouteEndpoint AnonymousEndpoint(string route, params object[] metadata)
     {
         var builder = new RouteEndpointBuilder(_ => Task.CompletedTask, RoutePatternFactory.Parse(route), 0);
         builder.Metadata.Add(new AllowAnonymousAttribute());
+        if (!metadata.OfType<IHttpMethodMetadata>().Any())
+            builder.Metadata.Add(new HttpMethodMetadata(["GET"]));
         foreach (var item in metadata)
             builder.Metadata.Add(item);
         return (RouteEndpoint)builder.Build();
@@ -218,11 +250,23 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         var route = Route(endpoint);
         var anonymous = endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null;
         var policies = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
-        return anonymous ? IsAllowedAnonymousRoute(endpoint, route, anonymousRoutes) || IsStaticAsset(endpoint, route)
+        return anonymous ? IsAllowedAnonymous(endpoint, route, anonymousRoutes)
             : policies.Any(p => !string.IsNullOrWhiteSpace(p.Policy));
     }
 
-    private static bool IsAllowedAnonymousRoute(RouteEndpoint endpoint, string route, IReadOnlySet<string> anonymousRoutes) =>
+    // Anônimo só com os métodos declarados no endpoint (sem eles, vale qualquer método): na API, cada par (método, rota)
+    // da lista; no site e nos arquivos estáticos, só leitura.
+    private static bool IsAllowedAnonymous(RouteEndpoint endpoint, string route, IReadOnlySet<string> anonymousRoutes)
+    {
+        if (endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods is not { Count: > 0 } methods)
+            return false;
+        if (methods.All(method => AnonymousApiRoutes.Contains($"{method} {route}")))
+            return true;
+        return methods.All(SiteMethods.Contains)
+            && (IsAllowedSiteRoute(endpoint, route, anonymousRoutes) || IsStaticAsset(endpoint, route));
+    }
+
+    private static bool IsAllowedSiteRoute(RouteEndpoint endpoint, string route, IReadOnlySet<string> anonymousRoutes) =>
         anonymousRoutes.Contains(route) && (!SitePageRoutes.Contains(route) || IsComponentPage(endpoint));
 
     // O MapRazorComponents põe o tipo do componente em cada endpoint de página que cria.

@@ -109,7 +109,7 @@ internal sealed class SafeDiagnosticState : List<KeyValuePair<string, object?>>
         "RequestId" => text.Length == 13 && text.All(character => character is >= '0' and <= '9' or >= 'A' and <= 'V'),
         "ConnectionId" or "CommandId" => Guid.TryParseExact(text, "D", out _),
         "elapsed" => double.TryParse(text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out _),
-        "HealthCheckName" => text == "database",
+        "HealthCheckName" => text is "database" or "row-security",
         _ => false,
     };
 
