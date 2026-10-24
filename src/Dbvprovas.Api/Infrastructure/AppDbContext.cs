@@ -154,6 +154,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ClubCon
             e.Property(x => x.Name).HasColumnName("name");
             e.Property(x => x.City).HasColumnName("city");
             e.Property(x => x.HasDirector).HasColumnName("has_director");
+            // Primeira barreira da visão, que no banco também só responde ao admin (RNF-TEN-001, D-148).
+            e.HasQueryFilter(_ => CurrentIsPlatformAdmin);
         });
     }
 

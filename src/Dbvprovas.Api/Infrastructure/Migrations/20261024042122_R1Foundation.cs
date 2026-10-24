@@ -710,7 +710,8 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     USING (id = app_club_id()
                         OR (app_club_id() IS NULL AND EXISTS (SELECT 1 FROM memberships m
                             WHERE m.club_id = clubs.id AND m.person_id = app_person_id() AND m.status = 'Active')));
-                CREATE POLICY clubs_insert ON clubs FOR INSERT WITH CHECK (id = app_club_id());
+                -- Clube só nasce pela aprovação da fundação, com o papel de admin (RN-TEN-002, CA-TEN-010).
+                CREATE POLICY clubs_insert ON clubs FOR INSERT WITH CHECK (id = app_club_id() AND app_is_platform_admin());
                 CREATE POLICY clubs_update ON clubs FOR UPDATE USING (id = app_club_id()) WITH CHECK (id = app_club_id());
 
                 DROP POLICY persons_select ON persons;
@@ -755,12 +756,13 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     USING (person_id = app_person_id() OR club_id = app_club_id() OR (club_id IS NULL AND app_is_platform_admin()));
                 CREATE POLICY consents_insert ON consents FOR INSERT
                     WITH CHECK (person_id = app_person_id() AND (club_id IS NULL OR club_id = app_club_id()));
-                -- Só o titular muda o próprio consentimento; o admin só o pré-fundação, ao decidir (CA-PRV-008, CA-TEN-010). O clube
-                -- fica no USING porque o SELECT ... FOR SHARE da diretoria (RowLocks) também passa por ele; quem barra a escrita
-                -- da diretoria é o WITH CHECK.
+                -- Só o titular muda o próprio consentimento; o admin, só o pré-fundação (com founding_request_id), ao decidir
+                -- (CA-PRV-008, CA-TEN-010). O clube fica no USING porque o SELECT ... FOR SHARE da diretoria (RowLocks) também
+                -- passa por ele; quem barra a escrita da diretoria e a do admin no consentimento de um membro é o WITH CHECK.
                 CREATE POLICY consents_update ON consents FOR UPDATE
                     USING (person_id = app_person_id() OR club_id = app_club_id() OR (club_id IS NULL AND app_is_platform_admin()))
-                    WITH CHECK ((club_id IS NULL OR club_id = app_club_id()) AND (person_id = app_person_id() OR app_is_platform_admin()));
+                    WITH CHECK ((club_id IS NULL OR club_id = app_club_id())
+                        AND (person_id = app_person_id() OR (app_is_platform_admin() AND founding_request_id IS NOT NULL)));
                 -- O consentimento do pedido de entrada é do mesmo candidato e do mesmo clube (RN-JOIN-004, RN-TEN-001).
                 CREATE UNIQUE INDEX ux_consents_id_club_person ON consents (id, club_id, person_id);
                 ALTER TABLE join_requests ADD CONSTRAINT fk_join_requests_consent_same_club_person
@@ -770,9 +772,9 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                 CREATE POLICY founding_requests_select ON founding_requests FOR SELECT
                     USING (requester_person_id = app_person_id() OR app_is_platform_admin());
                 CREATE POLICY founding_requests_insert ON founding_requests FOR INSERT WITH CHECK (requester_person_id = app_person_id());
-                -- O solicitante só cancela; quem decide é o admin (RN-TEN-002, CA-TEN-009, CA-TEN-010).
+                -- O solicitante só cancela o próprio pedido ainda pendente; quem decide é o admin (RN-TEN-002, CA-TEN-009, CA-TEN-010).
                 CREATE POLICY founding_requests_update ON founding_requests FOR UPDATE
-                    USING (requester_person_id = app_person_id() OR app_is_platform_admin())
+                    USING ((requester_person_id = app_person_id() AND status = 'Pending') OR app_is_platform_admin())
                     WITH CHECK (app_is_platform_admin() OR (requester_person_id = app_person_id() AND status = 'Cancelled'));
 
                 ALTER TABLE founding_records ENABLE ROW LEVEL SECURITY;
@@ -820,13 +822,13 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
 
                 -- Convite vigente de um clube ativo (D-162), sem listar códigos.
                 CREATE FUNCTION club_id_by_invite(p_code text) RETURNS uuid
-                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
                     AS $$ SELECT id FROM clubs WHERE invite_code = p_code AND status = 'Active' $$;
                 -- Estado do solicitante de uma fundação pendente, só para o admin (RN-TEN-003, RN-TEN-004, D-137, RN-AUD-006): se é
                 -- diretor e cada participação ativa ou suspensa (uma linha por participação; sem nenhuma, uma linha com nulos).
                 CREATE FUNCTION founding_requester_state(p_request uuid)
                     RETURNS TABLE (director_club_id uuid, membership_id uuid, membership_club_id uuid)
-                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
                     AS $$
                         SELECT (SELECT r.club_id FROM role_assignments r JOIN memberships d ON d.id = r.membership_id
                                 WHERE d.person_id = f.requester_person_id AND r.role = 'Director' AND r.ended_at IS NULL LIMIT 1),
@@ -839,7 +841,7 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                 -- tarefa agendada, que roda sem pessoa nem clube no contexto.
                 CREATE FUNCTION join_request_clubs_due(p_now timestamptz, p_remind_before interval, p_purge_after interval)
                     RETURNS SETOF uuid
-                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
                     AS $$
                         SELECT DISTINCT club_id FROM join_requests
                         WHERE app_person_id() IS NULL AND app_club_id() IS NULL
@@ -849,14 +851,14 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     $$;
                 -- Conta pelo sub do Google, só para o login, que roda sem pessoa nem clube no contexto (RN-ID-001).
                 CREATE FUNCTION account_by_google_subject(p_subject text) RETURNS TABLE (account_id uuid, email text)
-                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
                     AS $$
                         SELECT id, email FROM accounts
                         WHERE google_subject = p_subject AND app_person_id() IS NULL AND app_club_id() IS NULL
                     $$;
                 -- E-mail só para a própria pessoa, ou para o admin dentro do clube do membro (RN-PRV-001, PERM-AUD-002).
                 CREATE FUNCTION account_email(p_person uuid) RETURNS text
-                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
                     AS $$
                         SELECT a.email FROM accounts a
                         WHERE a.person_id = p_person
@@ -866,14 +868,14 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     $$;
                 -- Endereço de uma mensagem da fila ainda não enviada, só para a tarefa agendada (RN-NTF-001).
                 CREATE FUNCTION outbox_recipient_email(p_message uuid) RETURNS text
-                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
                     AS $$
                         SELECT a.email FROM email_outbox o JOIN accounts a ON a.id = o.recipient_account_id
                         WHERE o.id = p_message AND o.sent_at IS NULL AND app_person_id() IS NULL AND app_club_id() IS NULL
                     $$;
                 -- Admins adultos, para os avisos (D-146): só IDs; o corte de idade vem da aplicação.
                 CREATE FUNCTION adult_platform_admin_ids(p_born_on_or_before date) RETURNS SETOF uuid
-                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+                    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
                     AS $$
                         SELECT a.person_id FROM accounts a JOIN persons p ON p.id = a.person_id
                         WHERE a.is_platform_admin AND p.birth_date <= p_born_on_or_before
@@ -882,7 +884,10 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     join_request_clubs_due(timestamptz, interval, interval), account_by_google_subject(text), account_email(uuid),
                     outbox_recipient_email(uuid), adult_platform_admin_ids(date) FROM PUBLIC;
 
-                GRANT INSERT, UPDATE ON clubs, persons, accounts TO dbv_app;
+                GRANT INSERT, UPDATE ON clubs, persons TO dbv_app;
+                -- Na conta, o app só insere e troca o e-mail: o sub e o papel de admin não mudam por ele (RN-ID-001, RN-AUD-005).
+                GRANT INSERT ON accounts TO dbv_app;
+                GRANT UPDATE (email) ON accounts TO dbv_app;
                 GRANT SELECT, INSERT, UPDATE ON units, role_assignments, director_nominations, founding_requests, consents,
                     admin_access_requests, notifications, email_outbox TO dbv_app;
                 GRANT SELECT, INSERT ON founding_records, audit_entries TO dbv_app;
