@@ -67,7 +67,8 @@ public sealed class ApiClient(HttpClient http, SessionState session)
                 var value = await response!.Content.ReadFromJsonAsync<T>();
                 return value is null ? ApiResult<T>.Fail(ApiError.Unavailable) : ApiResult<T>.Ok(value);
             }
-            catch (Exception e) when (e is JsonException or NotSupportedException or HttpRequestException or WebException or TaskCanceledException)
+            // InvalidOperationException: charset inválido no Content-Type.
+            catch (Exception e) when (e is JsonException or NotSupportedException or InvalidOperationException or HttpRequestException or WebException or TaskCanceledException)
             {
                 return ApiResult<T>.Fail(ApiError.Unavailable);
             }
@@ -83,6 +84,7 @@ public sealed class ApiClient(HttpClient http, SessionState session)
 
     private async Task<(HttpResponseMessage? Response, ApiError? Error, string? Code)> ExchangeAsync(HttpMethod method, string path, object? body)
     {
+        HttpResponseMessage? response = null;
         try
         {
             using var request = new HttpRequestMessage(method, path);
@@ -91,9 +93,14 @@ public sealed class ApiClient(HttpClient http, SessionState session)
             if (body is not null)
                 request.Content = JsonContent.Create(body);
 
-            var response = await http.SendAsync(request);
+            response = await http.SendAsync(request);
             if (response.IsSuccessStatusCode)
-                return (response, null, null);
+            {
+                // Quem recebe a resposta é quem a descarta; o finally só cobre os outros caminhos.
+                var success = response;
+                response = null;
+                return (success, null, null);
+            }
 
             var error = response.StatusCode switch
             {
@@ -105,13 +112,16 @@ public sealed class ApiClient(HttpClient http, SessionState session)
                 _ => ApiError.Unavailable,
             };
             var code = error is ApiError.Forbidden or ApiError.Conflict or ApiError.Invalid ? await ReadProblemCodeAsync(response) : null;
-            response.Dispose();
             return (null, error, code);
         }
         // WebException: no Android, socket fechado e prazo estourado sobem assim, não como HttpRequestException.
         catch (Exception e) when (e is HttpRequestException or WebException or TaskCanceledException)
         {
             return (null, ApiError.Unavailable, null);
+        }
+        finally
+        {
+            response?.Dispose();
         }
     }
 
@@ -125,7 +135,8 @@ public sealed class ApiClient(HttpClient http, SessionState session)
                 && document.RootElement.TryGetProperty(ProblemCodes.Extension, out var code)
                 && code.ValueKind == JsonValueKind.String ? code.GetString() : null;
         }
-        catch (Exception e) when (e is JsonException or HttpRequestException or WebException or TaskCanceledException)
+        // InvalidOperationException: charset inválido no Content-Type.
+        catch (Exception e) when (e is JsonException or InvalidOperationException or HttpRequestException or WebException or TaskCanceledException)
         {
             return null;
         }
