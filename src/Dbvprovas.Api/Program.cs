@@ -38,13 +38,17 @@ app.MapClubs();
 // O site é anônimo de forma explícita (CA-TEN-006). Só os endpoints de resource-collection do
 // MapRazorComponents ignoram as convenções de cada chamada (dotnet/aspnetcore#65327), por isso o
 // AllowAnonymous vai no grupo; voltar ao AllowAnonymous por chamada quando o framework os cobrir.
+// Pelo mesmo motivo, o grupo declara o site só de leitura: os de resource-collection não trazem método próprio.
+// As páginas, que viriam com GET e POST, ficam só com GET: o site roda no navegador, sem formulário no servidor (D-111).
 // Caminho desconhecido, inclusive /api/..., segue sendo o 404 da API, nunca a página (D-112).
 var site = app.MapGroup("");
 site.MapStaticAssets();
 site.MapRazorComponents<App>()
     .AddInteractiveWebAssemblyRenderMode()
-    .AddAdditionalAssemblies(typeof(Dbvprovas.Ui.Routes).Assembly);
+    .AddAdditionalAssemblies(typeof(Dbvprovas.Ui.Routes).Assembly)
+    .WithMetadata(new HttpMethodMetadata(["GET"]));
 site.AllowAnonymous();
+site.WithMetadata(new HttpMethodMetadata(["GET", "HEAD"]));
 
 if (app.Environment.IsDevelopment())
 {

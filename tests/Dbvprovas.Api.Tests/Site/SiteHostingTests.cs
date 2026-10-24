@@ -37,4 +37,19 @@ public sealed class SiteHostingTests(PostgresFixture db)
         Assert.Contains("_framework/blazor.web", html);
         Assert.DoesNotContain("<h1", html);
     }
+
+    // CA-TEN-006: as rotas anônimas só atendem o método declarado; um POST na página ou na saúde não é servido.
+    [Theory]
+    [InlineData("")]
+    [InlineData("club")]
+    [InlineData("health/live")]
+    public async Task Anonymous_routes_refuse_other_methods(string path)
+    {
+        await using var api = new ApiFactory(db, "Development");
+
+        using var response = await api.CreateClient().PostAsync(path, content: null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("", await response.Content.ReadAsStringAsync());
+    }
 }
