@@ -1,3 +1,5 @@
+using Dbvprovas.Api.Modules.Audit;
+using Dbvprovas.Api.Modules.Notifications;
 using Dbvprovas.Api.Modules.Organization;
 using Dbvprovas.Api.Modules.Tenancy;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -13,6 +15,9 @@ public static class CoreServices
         services.AddScoped<ClubScope>();
         services.AddOptions<JobOptions>().BindConfiguration(JobOptions.Section);
         services.AddScoped<ActorService>();
+        services.AddScoped<AuditLog>();
+        services.AddScoped<RoleTermination>();
+        services.AddScoped<Notifier>();
         return services;
     }
 }
