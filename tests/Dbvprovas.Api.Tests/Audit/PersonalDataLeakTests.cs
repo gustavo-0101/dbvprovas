@@ -88,6 +88,26 @@ public sealed class PersonalDataLeakTests(PostgresFixture db)
         Assert.DoesNotContain(traces.Items, item => item.Contains(sentinel, StringComparison.Ordinal));
     }
 
+    // RNF-PRV-001: a descrição de um status de erro também pode repetir a mensagem; ela não sai, e um SqlState fica. A
+    // captura nasce depois da API, como o exportador do OpenTelemetry nasce depois do ouvinte de privacidade.
+    [Fact]
+    public async Task Error_status_description_never_reaches_traces()
+    {
+        var sentinel = $"Sentinel{Guid.NewGuid():N}";
+        await using var api = new ApiFactory(db, "Production");
+        _ = api.Services;
+        using var traces = new ActivityCapture();
+        using var source = new ActivitySource("Dbvprovas.Tests.StatusProbe");
+
+        using (var activity = source.StartActivity("probe"))
+            activity!.SetStatus(ActivityStatusCode.Error, sentinel);
+        using (var activity = source.StartActivity("probe"))
+            activity!.SetStatus(ActivityStatusCode.Error, "22P02");
+
+        Assert.DoesNotContain(traces.Items, item => item.Contains(sentinel, StringComparison.Ordinal));
+        Assert.Contains(traces.Items, item => item.Contains("statusDescription=22P02", StringComparison.Ordinal));
+    }
+
     // RNF-PRV-001
     [Fact]
     public async Task Redaction_erases_personal_data_in_logs()
