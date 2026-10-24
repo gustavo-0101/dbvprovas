@@ -81,4 +81,45 @@ public sealed class MeTests(PostgresFixture db)
         Assert.False(me!.ProfileComplete);
         Assert.False(me.IsAdult);
     }
+
+    // RF-ID-005, RF-TEN-001: cadastro recém-criado, ainda sem nome, recebe 200 com o nome nulo e o cadastro incompleto.
+    [Fact]
+    public async Task Me_answers_new_profile_without_name()
+    {
+        var person = await TestData.CreatePersonAsync(db, "Sem Nome", age: null);
+        await OwnerSql.ExecuteAsync(db.OwnerConnectionString,
+            "UPDATE persons SET name = NULL, sex = NULL WHERE id = @p", ("p", person.PersonId));
+        await using var api = new ApiFactory(db, "Production") { UseTestAuthentication = true };
+
+        using var response = await api.CreateClientAs(person).GetAsync(ApiRoutes.Me);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var me = await response.Content.ReadFromJsonAsync<MeResponse>();
+        Assert.NotNull(me);
+        Assert.Null(me.Name);
+        Assert.False(me.ProfileComplete);
+        Assert.False(me.IsAdult);
+        Assert.Empty(me.Clubs);
+    }
+
+    // RF-TEN-001, PC-09: só os cargos vigentes aparecem; o encerrado some, mesmo quando o cargo foi dado de novo.
+    [Fact]
+    public async Task Me_lists_only_current_roles()
+    {
+        var club = await TestData.CreateClubAsync(db);
+        var member = await TestData.AddMemberAsync(db, club, await TestData.CreatePersonAsync(db, "Rui", 33, Sex.Male));
+        var treasurer = await TestData.AssignRoleAsync(db, member, RoleCode.Treasurer);
+        var formerSecretary = await TestData.AssignRoleAsync(db, member, RoleCode.Secretary);
+        await OwnerSql.ExecuteAsync(db.OwnerConnectionString,
+            "UPDATE role_assignments SET ended_at = now(), end_cause = 'RemovedByBoard' WHERE id IN (@t, @s)",
+            ("t", treasurer), ("s", formerSecretary));
+        await TestData.AssignRoleAsync(db, member, RoleCode.Secretary);
+        await using var api = new ApiFactory(db, "Production") { UseTestAuthentication = true };
+
+        var me = await api.CreateClientAs(member).GetFromJsonAsync<MeResponse>(ApiRoutes.Me);
+
+        var summary = Assert.Single(me!.Clubs);
+        Assert.Equal(member.MembershipId, summary.MembershipId);
+        Assert.Equal(new[] { RoleCode.Secretary }, summary.Roles);
+    }
 }

@@ -72,11 +72,38 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         Assert.Contains("/club", SitePageRoutes);
         Assert.Contains("/not-found", SitePageRoutes);
         foreach (var route in SitePageRoutes)
-        {
-            Assert.DoesNotContain('*', route);
-            foreach (var prefix in new[] { "/api", "/health", "/openapi", "/_framework", "/_content" })
-                Assert.False(route.StartsWith(prefix, StringComparison.OrdinalIgnoreCase), route);
-        }
+            Assert.True(IsExactPageRoute(route), route);
+    }
+
+    [Theory]
+    [InlineData("/{slug}", false)]
+    [InlineData("/{a}/{b}", false)]
+    [InlineData("/{a}/x", false)]
+    [InlineData("/api/x", false)]
+    [InlineData("/_framework/x", false)]
+    [InlineData("/club/*", false)]
+    [InlineData("/", true)]
+    [InlineData("/club", true)]
+    [InlineData("/club/members/{membershipId:guid}", true)]
+    [InlineData("admin/clubs/{clubId:guid}/director", true)]
+    public void CA_TEN_006_Page_route_shape_is_checked(string route, bool exact)
+    {
+        Assert.Equal(exact, IsExactPageRoute(route));
+    }
+
+    // Página anônima só com o primeiro segmento literal (ou a raiz), sem curinga e fora da API, da saúde e dos arquivos do
+    // framework: um parâmetro no começo atenderia qualquer caminho, inclusive /api/... desconhecido, que é o 404 da API
+    // (CA-TEN-006, D-112).
+    private static bool IsExactPageRoute(string route)
+    {
+        var path = "/" + route.TrimStart('/');
+        if (path.Contains('*'))
+            return false;
+        foreach (var prefix in new[] { "/api", "/health", "/openapi", "/_framework", "/_content" })
+            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+        var segments = RoutePatternFactory.Parse(path).PathSegments;
+        return segments.Count == 0 || segments[0].Parts.All(part => part is RoutePatternLiteralPart);
     }
 
     [Fact]
