@@ -75,13 +75,35 @@ public sealed class ActorServiceTests(PostgresFixture db)
     {
         var club = await TestData.CreateClubAsync(db);
         var suspended = await TestData.AddMemberAsync(db, club, await TestData.CreatePersonAsync(db, "Suspensa"), MembershipStatus.Suspended);
+        var ended = await TestData.AddMemberAsync(db, club, await TestData.CreatePersonAsync(db, "Encerrada"), MembershipStatus.Ended);
         var active = await TestData.CreateMemberAsync(db, club, "Ativa", role: RoleCode.Chaplain);
         await OwnerSql.ExecuteAsync(db.OwnerConnectionString,
             "UPDATE role_assignments SET ended_at = now(), end_cause = 'RemovedByBoard' WHERE membership_id = @m", ("m", active.MembershipId));
 
         Assert.Null(await ActorAsync(club, suspended.PersonId));
+        Assert.Null(await ActorAsync(club, ended.PersonId));
         var actor = await ActorAsync(club, active.PersonId);
         Assert.NotNull(actor);
         Assert.False(actor.HasAnyRole);
+    }
+
+    // RN-TEN-001: a participação e os cargos vêm só do clube da requisição. A diretora do clube A, com a participação
+    // encerrada no clube B, não age no B, embora a própria participação ativa no A seja visível de lá.
+    [Fact]
+    public async Task Actor_comes_only_from_the_request_club()
+    {
+        var clubA = await TestData.CreateClubAsync(db, "Clube Alfa");
+        var clubB = await TestData.CreateClubAsync(db, "Clube Beta");
+        var person = await TestData.CreatePersonAsync(db, "Diretora Dois Clubes");
+        var inA = await TestData.AddMemberAsync(db, clubA, person);
+        await TestData.AssignRoleAsync(db, inA, RoleCode.Director);
+        await TestData.AddMemberAsync(db, clubB, person, MembershipStatus.Ended);
+
+        var actorInA = await ActorAsync(clubA, person.PersonId);
+        var actorInB = await ActorAsync(clubB, person.PersonId);
+
+        Assert.NotNull(actorInA);
+        Assert.True(actorInA.IsDirector);
+        Assert.Null(actorInB);
     }
 }
