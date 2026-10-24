@@ -25,7 +25,8 @@ public static class ObservabilitySetup
         builder.Logging.EnableRedaction();
         builder.Services.AddRedaction(r => r.SetRedactor<ErasingRedactor>(DataTaxonomy.PersonalData));
         builder.Services.ProtectLogInputs();
-        // RNF-PRV-001: nos traces, a exceção também chega só com o tipo e a pilha.
+        // RNF-PRV-001: nos traces, a exceção também chega só com o tipo e a pilha. Registrado antes do AddOpenTelemetry,
+        // nasce antes do exportador e vê o fim de cada trace antes dele: não troque a ordem.
         builder.Services.AddSingleton<TraceExceptionPrivacy>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<TraceExceptionPrivacy>());
 

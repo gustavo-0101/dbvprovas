@@ -46,5 +46,7 @@ internal sealed class TraceExceptionPrivacy : IHostedService, IDisposable
             activity.SetStatus(activity.Status);
     }
 
-    private static bool IsSqlState(string text) => text.Length == 5 && text.All(char.IsAsciiLetterOrDigit);
+    // O SqlState do Postgres tem 5 caracteres, só dígitos e letras maiúsculas (22P02, 42P01).
+    private static bool IsSqlState(string text) =>
+        text.Length == 5 && text.All(character => char.IsAsciiDigit(character) || char.IsAsciiLetterUpper(character));
 }

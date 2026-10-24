@@ -103,8 +103,11 @@ public sealed class PersonalDataLeakTests(PostgresFixture db)
             activity!.SetStatus(ActivityStatusCode.Error, sentinel);
         using (var activity = source.StartActivity("probe"))
             activity!.SetStatus(ActivityStatusCode.Error, "22P02");
+        using (var activity = source.StartActivity("probe"))
+            activity!.SetStatus(ActivityStatusCode.Error, "aurora"[..5]);
 
         Assert.DoesNotContain(traces.Items, item => item.Contains(sentinel, StringComparison.Ordinal));
+        Assert.DoesNotContain(traces.Items, item => item.Contains("statusDescription=auror", StringComparison.Ordinal));
         Assert.Contains(traces.Items, item => item.Contains("statusDescription=22P02", StringComparison.Ordinal));
     }
 
