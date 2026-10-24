@@ -20,8 +20,8 @@ public sealed class PersonalDataLeakTests(PostgresFixture db)
         var member = await TestData.CreateClubWithMemberAsync(db, sentinel);
         using var traces = new ActivityCapture();
         var errorBodies = new List<string>();
-        await using var dev = new ApiFactory(db, "Development");
-        using var client = dev.CreateClientWithToken(await dev.SignInAsync(member.AccountId));
+        await using var dev = new ApiFactory(db, "Development") { UseTestAuthentication = true };
+        using var client = dev.CreateClientAs(member.AccountId);
         using var anonymous = dev.CreateClient();
 
         foreach (var route in new[]

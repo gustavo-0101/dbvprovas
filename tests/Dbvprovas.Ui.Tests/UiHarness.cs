@@ -29,13 +29,13 @@ internal sealed class UiHarness : IDisposable
 
     public void ServeClubAguias()
     {
-        Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Aurora", [new ClubSummary(ClubId, "Clube Águias")]));
+        Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Aurora", [new ClubSummary(ClubId, "Clube Águias", Guid.NewGuid(), [RoleCode.Director])], true, true, false));
         Api.Respond(HttpMethod.Get, ApiRoutes.Club(ClubId), HttpStatusCode.OK, new ClubResponse(ClubId, "Clube Águias"));
         Api.Respond(HttpMethod.Get, ApiRoutes.Members(ClubId), HttpStatusCode.OK, new[]
         {
-            new MemberResponse(Guid.NewGuid(), "Aurora"),
-            new MemberResponse(Guid.NewGuid(), "Caio"),
-            new MemberResponse(Guid.NewGuid(), "Dalva"),
+            new MemberResponse(Guid.NewGuid(), "Aurora", null),
+            new MemberResponse(Guid.NewGuid(), "Caio", null),
+            new MemberResponse(Guid.NewGuid(), "Dalva", null),
         });
     }
 

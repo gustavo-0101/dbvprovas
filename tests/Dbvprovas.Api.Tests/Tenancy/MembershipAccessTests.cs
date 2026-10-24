@@ -11,8 +11,8 @@ public sealed class MembershipAccessTests(PostgresFixture db)
     public async Task CA_TEN_008_Ended_membership_loses_access_on_next_request()
     {
         var member = await TestData.CreateClubWithMemberAsync(db, "Gilda");
-        await using var api = new ApiFactory(db, "Development");
-        using var client = api.CreateClientWithToken(await api.SignInAsync(member.AccountId));
+        await using var api = new ApiFactory(db, "Development") { UseTestAuthentication = true };
+        using var client = api.CreateClientAs(member.AccountId);
 
         using var before = await client.GetAsync(ApiRoutes.Members(member.ClubId));
         await TestData.EndMembershipAsync(db, member.MembershipId);
@@ -28,8 +28,8 @@ public sealed class MembershipAccessTests(PostgresFixture db)
     {
         var member = await TestData.CreateClubWithMemberAsync(db, "Heitor");
         await TestData.EndMembershipAsync(db, member.MembershipId);
-        await using var api = new ApiFactory(db, "Development");
-        using var client = api.CreateClientWithToken(await api.SignInAsync(member.AccountId));
+        await using var api = new ApiFactory(db, "Development") { UseTestAuthentication = true };
+        using var client = api.CreateClientAs(member.AccountId);
 
         var me = await client.GetFromJsonAsync<MeResponse>(ApiRoutes.Me);
 
