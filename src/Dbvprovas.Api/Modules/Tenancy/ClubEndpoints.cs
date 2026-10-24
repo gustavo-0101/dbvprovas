@@ -33,7 +33,7 @@ public static class ClubEndpoints
             where m.ClubId == clubId && m.EndedAt == null
             join p in db.Persons on m.PersonId equals p.Id
             orderby p.Name
-            select new MemberResponse(m.Id, p.Name)).ToListAsync(ct);
+            select new MemberResponse(m.Id, p.Name ?? string.Empty)).ToListAsync(ct);
         return TypedResults.Ok(members);
     }
 
@@ -43,7 +43,7 @@ public static class ClubEndpoints
             from m in db.Memberships
             where m.Id == membershipId && m.ClubId == clubId && m.EndedAt == null
             join p in db.Persons on m.PersonId equals p.Id
-            select new MemberResponse(m.Id, p.Name)).SingleOrDefaultAsync(ct);
+            select new MemberResponse(m.Id, p.Name ?? string.Empty)).SingleOrDefaultAsync(ct);
         return member is null ? TypedResults.NotFound() : TypedResults.Ok(member);
     }
 }

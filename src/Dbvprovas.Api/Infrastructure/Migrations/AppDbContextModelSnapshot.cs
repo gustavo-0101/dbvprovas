@@ -17,16 +17,165 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Audit.AdminAccess.AdminAccessRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedByPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_person_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.PrimitiveCollection<string[]>("Fields")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("fields");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("reason_code");
+
+                    b.Property<Guid>("RequestedByPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_person_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid?>("RevokedByPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revoked_by_person_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.PrimitiveCollection<Guid[]>("TargetMembershipIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("target_membership_ids");
+
+                    b.Property<DateTimeOffset?>("ValidUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("valid_until");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId");
+
+                    b.ToTable("admin_access_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Audit.AuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_person_id");
+
+                    b.Property<Guid?>("AdminAccessRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("admin_access_request_id");
+
+                    b.Property<string>("Cause")
+                        .HasColumnType("text")
+                        .HasColumnName("cause");
+
+                    b.Property<Guid?>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.PrimitiveCollection<string[]>("Fields")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("fields");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("ReasonCode")
+                        .HasColumnType("text")
+                        .HasColumnName("reason_code");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("scope");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "OccurredAt");
+
+                    b.HasIndex("Scope", "OccurredAt");
+
+                    b.ToTable("audit_entries", (string)null);
+                });
 
             modelBuilder.Entity("Dbvprovas.Api.Modules.Identity.Account", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text")
+                        .HasColumnName("email");
+
+                    b.Property<string>("GoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("google_subject");
+
+                    b.Property<bool>("IsPlatformAdmin")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_platform_admin");
 
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uuid")
@@ -35,6 +184,9 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("PersonId")
+                        .IsUnique();
+
+                    b.HasIndex(new[] { "GoogleSubject" }, "ux_accounts_google_subject")
                         .IsUnique();
 
                     b.ToTable("accounts", (string)null);
@@ -46,14 +198,496 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateOnly?>("BirthDate")
+                        .HasColumnType("date")
+                        .HasColumnName("birth_date");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Sex")
+                        .HasColumnType("text")
+                        .HasColumnName("sex");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("persons", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_persons_sex", "sex IS NULL OR sex IN ('Female', 'Male')");
+                        });
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Identity.Session", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<byte[]>("NonceHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("nonce_hash");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("target");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex(new[] { "NonceHash" }, "ux_sessions_nonce_hash")
+                        .IsUnique();
+
+                    b.HasIndex(new[] { "TokenHash" }, "ux_sessions_token_hash")
+                        .IsUnique();
+
+                    b.ToTable("sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_sessions_target", "target IN ('Web', 'App')");
+                        });
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Joining.JoinRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CandidatePersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("candidate_person_id");
+
+                    b.Property<string>("CloseCause")
+                        .HasColumnType("text")
+                        .HasColumnName("close_cause");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<Guid>("ConsentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("consent_id");
+
+                    b.Property<Guid>("CreatedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_account_id");
+
+                    b.Property<Guid?>("DecidedByPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_person_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("path");
+
+                    b.Property<DateTimeOffset>("QueuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("queued_at");
+
+                    b.Property<string>("ReasonCode")
+                        .HasColumnType("text")
+                        .HasColumnName("reason_code");
+
+                    b.Property<DateTimeOffset?>("ReminderSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reminder_sent_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CandidatePersonId");
+
+                    b.HasIndex("ConsentId");
+
+                    b.HasIndex("CreatedByAccountId");
+
+                    b.HasIndex("ClubId", "Status");
+
+                    b.ToTable("join_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Notifications.EmailOutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<Guid>("ObjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<Guid>("RecipientAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_account_id");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Template")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("template");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex(new[] { "Template", "ObjectId", "RecipientAccountId" }, "ux_email_outbox_once")
+                        .IsUnique();
+
+                    b.ToTable("email_outbox", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Notifications.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("event");
+
+                    b.Property<Guid>("ObjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("RecipientPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_person_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex(new[] { "RecipientPersonId", "Event", "ObjectId" }, "ux_notifications_once")
+                        .IsUnique();
+
+                    b.ToTable("notifications", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Organization.DirectorNomination", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("NominatorMembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nominator_membership_id");
+
+                    b.Property<Guid>("NomineeMembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nominee_membership_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "NominatorMembershipId");
+
+                    b.HasIndex("ClubId", "NomineeMembershipId");
+
+                    b.HasIndex(new[] { "ClubId" }, "ux_director_nominations_one_pending")
+                        .IsUnique()
+                        .HasFilter("status = 'Pending'");
+
+                    b.ToTable("director_nominations", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Organization.RoleAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AssignedByPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_by_person_id");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<string>("EndCause")
+                        .HasColumnType("text")
+                        .HasColumnName("end_cause");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<Guid?>("EndedByPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ended_by_person_id");
+
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("membership_id");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("role");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<Guid?>("UnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("unit_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId");
+
+                    b.HasIndex("ClubId", "MembershipId");
+
+                    b.HasIndex("ClubId", "UnitId");
+
+                    b.HasIndex(new[] { "MembershipId", "Role" }, "ux_role_assignments_one_per_membership_role")
+                        .IsUnique()
+                        .HasFilter("ended_at IS NULL");
+
+                    b.HasIndex(new[] { "ClubId", "Role" }, "ux_role_assignments_unique_club_roles")
+                        .IsUnique()
+                        .HasFilter("ended_at IS NULL AND role IN ('Director', 'Secretary', 'Treasurer')");
+
+                    b.ToTable("role_assignments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_role_assignments_role", "role IN ('Director', 'AssociateDirector', 'Secretary', 'Treasurer', 'Chaplain', 'Pastor', 'Counselor', 'AssociateCounselor', 'Instructor')");
+
+                            t.HasCheckConstraint("ck_role_assignments_unit", "(role IN ('Counselor', 'AssociateCounselor')) = (unit_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Organization.Unit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("MaxAge")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_age");
+
+                    b.Property<int>("MinAge")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_age");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<string>("Sex")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("sex");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
                     b.HasKey("Id");
 
-                    b.ToTable("persons", (string)null);
+                    b.HasIndex("ClubId");
+
+                    b.ToTable("units", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_units_age_range", "min_age <= max_age AND min_age BETWEEN 10 AND 15 AND max_age BETWEEN 10 AND 15");
+
+                            t.HasCheckConstraint("ck_units_sex", "sex IN ('Female', 'Male')");
+                        });
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Privacy.Consent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<Guid?>("ConsentedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("consented_by_account_id");
+
+                    b.Property<string>("EndCause")
+                        .HasColumnType("text")
+                        .HasColumnName("end_cause");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<Guid?>("FoundingRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("founding_request_id");
+
+                    b.Property<DateTimeOffset>("GrantedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("granted_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("person_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("TermVersion")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("term_version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId");
+
+                    b.HasIndex("FoundingRequestId");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex(new[] { "PersonId", "ClubId" }, "ux_consents_one_active_per_club")
+                        .IsUnique()
+                        .HasFilter("revoked_at IS NULL AND ended_at IS NULL AND club_id IS NOT NULL");
+
+                    b.ToTable("consents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_consents_context", "club_id IS NOT NULL OR founding_request_id IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.AdminClubOverview", b =>
+                {
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("city");
+
+                    b.Property<bool>("HasDirector")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_director");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.ToTable((string)null);
+
+                    b.ToView("admin_club_overview", (string)null);
                 });
 
             modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.Club", b =>
@@ -61,6 +695,28 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("Church")
+                        .HasColumnType("text")
+                        .HasColumnName("church");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("city");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("FoundingRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("founding_request_id");
+
+                    b.Property<string>("InviteCode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("invite_code");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -74,7 +730,135 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex(new[] { "InviteCode" }, "ux_clubs_invite_code")
+                        .IsUnique();
+
                     b.ToTable("clubs", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.ClubDirectoryEntry", b =>
+                {
+                    b.Property<string>("Church")
+                        .HasColumnType("text")
+                        .HasColumnName("church");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("city");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.ToTable((string)null);
+
+                    b.ToView("club_directory", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.Founding.FoundingRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("club_id");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("person_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.ToTable("founding_records", (string)null);
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.Founding.FoundingRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<string>("ClubChurch")
+                        .HasColumnType("text")
+                        .HasColumnName("club_church");
+
+                    b.Property<string>("ClubCity")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("club_city");
+
+                    b.Property<string>("ClubName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("club_name");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("DecidedByPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_person_id");
+
+                    b.Property<bool>("ExceptionGranted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("exception_granted");
+
+                    b.Property<bool>("ExceptionRequested")
+                        .HasColumnType("boolean")
+                        .HasColumnName("exception_requested");
+
+                    b.Property<Guid>("ProposedClubId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proposed_club_id");
+
+                    b.Property<string>("ReasonCode")
+                        .HasColumnType("text")
+                        .HasColumnName("reason_code");
+
+                    b.Property<Guid>("RequesterAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requester_account_id");
+
+                    b.Property<Guid>("RequesterPersonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requester_person_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposedClubId")
+                        .IsUnique();
+
+                    b.HasIndex("RequesterAccountId");
+
+                    b.HasIndex(new[] { "RequesterPersonId" }, "ux_founding_requests_one_pending_per_person")
+                        .IsUnique()
+                        .HasFilter("status = 'Pending'");
+
+                    b.ToTable("founding_requests", (string)null);
                 });
 
             modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.Membership", b =>
@@ -91,6 +875,11 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ended_at");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uuid")
                         .HasColumnName("person_id");
@@ -99,13 +888,48 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StatusCause")
+                        .HasColumnType("text")
+                        .HasColumnName("status_cause");
+
+                    b.Property<string>("StatusReason")
+                        .HasColumnType("text")
+                        .HasColumnName("status_reason");
+
+                    b.Property<DateTimeOffset?>("SuspendedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("suspended_at");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ClubId");
 
                     b.HasIndex("PersonId");
 
-                    b.ToTable("memberships", (string)null);
+                    b.HasIndex(new[] { "PersonId" }, "ux_memberships_one_active_per_person")
+                        .IsUnique()
+                        .HasFilter("status = 'Active'");
+
+                    b.ToTable("memberships", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_memberships_ended", "(status = 'Ended') = (ended_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_memberships_suspended", "(status = 'Suspended') = (suspended_at IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Audit.AdminAccess.AdminAccessRequest", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dbvprovas.Api.Modules.Identity.Account", b =>
@@ -113,6 +937,145 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                     b.HasOne("Dbvprovas.Api.Modules.Identity.Person", null)
                         .WithMany()
                         .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Identity.Session", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Joining.JoinRequest", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Person", null)
+                        .WithMany()
+                        .HasForeignKey("CandidatePersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Privacy.Consent", null)
+                        .WithMany()
+                        .HasForeignKey("ConsentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Notifications.Notification", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Person", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientPersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Organization.DirectorNomination", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId", "NominatorMembershipId")
+                        .HasPrincipalKey("ClubId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId", "NomineeMembershipId")
+                        .HasPrincipalKey("ClubId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Organization.RoleAssignment", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId", "MembershipId")
+                        .HasPrincipalKey("ClubId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Organization.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId", "UnitId")
+                        .HasPrincipalKey("ClubId", "Id");
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Organization.Unit", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Privacy.Consent", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId");
+
+                    b.HasOne("Dbvprovas.Api.Modules.Tenancy.Founding.FoundingRequest", null)
+                        .WithMany()
+                        .HasForeignKey("FoundingRequestId");
+
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Person", null)
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.Founding.FoundingRecord", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Person", null)
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dbvprovas.Api.Modules.Tenancy.Founding.FoundingRequest", b =>
+                {
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Account", null)
+                        .WithMany()
+                        .HasForeignKey("RequesterAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Dbvprovas.Api.Modules.Identity.Person", null)
+                        .WithMany()
+                        .HasForeignKey("RequesterPersonId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
