@@ -95,9 +95,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_USER: ${{ github.event.pull_request.user.login }}
+        # Uma falha do git barra o passo: o pipefail cobre o git log, e o rev-list vai numa atribuição antes do laço.
         run: |
+          set -o pipefail
           git log --format=%B "$RANGE" | gitleaks stdin --redact --no-banner
-          for sha in $(git rev-list "$RANGE"); do
+          shas=$(git rev-list "$RANGE")
+          for sha in $shas; do
             if [ "$PR_USER" = "dependabot[bot]" ]; then
               origin=$(gh api "repos/$REPO/commits/$sha" --jq '"\(.author.login) \(.committer.login) \(.commit.verification.verified) \(.commit.verification.reason)"')
               if [ "$origin" = "dependabot[bot] web-flow true valid" ]; then
