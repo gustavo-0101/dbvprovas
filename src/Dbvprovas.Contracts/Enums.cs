@@ -28,7 +28,7 @@ public enum RoleCode
     Instructor,
 }
 
-// O desbravador chega no R2.
+// Tipo da participação no clube.
 [JsonConverter(typeof(StrictEnumConverter<MembershipKind>))]
 public enum MembershipKind
 {

@@ -362,6 +362,26 @@ public sealed class R1IsolationTests(PostgresFixture db)
         await Assert.ThrowsAsync<InvalidOperationException>(() => clubScope.EnterAsync(world.A.ClubId, CancellationToken.None));
     }
 
+    // Troca que falha no banco (aqui, cancelada) deixa as duas barreiras no clube de antes: o filtro do EF não vai para B
+    // enquanto o RLS fica em A (RNF-TEN-006, CA-TEN-001).
+    [Fact]
+    public async Task CA_TEN_001_Failed_club_scope_switch_keeps_both_barriers_on_the_previous_club()
+    {
+        var world = await CreateWorldAsync();
+        await using var services = DbScope.Create(db);
+        await using var scope = services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<ClubContext>();
+        context.ClubId = world.A.ClubId;
+        var app = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var clubScope = scope.ServiceProvider.GetRequiredService<ClubScope>();
+        await using var tx = await app.Database.BeginTransactionAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => clubScope.EnterAsync(world.B.ClubId, new CancellationToken(canceled: true)));
+
+        Assert.Equal(world.A.ClubId, context.ClubId);
+        Assert.Equal(new[] { world.A.UnitX, world.A.UnitY }.Order(), (await app.Units.IgnoreQueryFilters().Select(u => u.Id).ToListAsync()).Order());
+    }
+
     // Entidade opcionalmente de clube com outro clube é barrada pelo guarda; sem clube, passa (RN-TEN-001).
     [Fact]
     public async Task CA_TEN_001_Write_guard_checks_optional_club_entities()

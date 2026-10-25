@@ -888,8 +888,12 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                 -- Na conta, o app só insere e troca o e-mail: o sub e o papel de admin não mudam por ele (RN-ID-001, RN-AUD-005).
                 GRANT INSERT ON accounts TO dbv_app;
                 GRANT UPDATE (email) ON accounts TO dbv_app;
-                GRANT SELECT, INSERT, UPDATE ON units, role_assignments, director_nominations, founding_requests, consents,
+                GRANT SELECT, INSERT, UPDATE ON units, role_assignments, director_nominations, founding_requests,
                     admin_access_requests, notifications, email_outbox TO dbv_app;
+                -- No consentimento, o app só atualiza o clube aprovado na fundação e o encerramento ou a revogação: titular, tipo,
+                -- contexto e versão do termo ficam fora do alcance dele (CA-PRV-008, D-121).
+                GRANT SELECT, INSERT ON consents TO dbv_app;
+                GRANT UPDATE (club_id, revoked_at, ended_at, end_cause) ON consents TO dbv_app;
                 GRANT SELECT, INSERT ON founding_records, audit_entries TO dbv_app;
                 GRANT SELECT, INSERT, UPDATE, DELETE ON join_requests TO dbv_app;
                 GRANT SELECT, INSERT, UPDATE, DELETE ON sessions TO dbv_app;

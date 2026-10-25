@@ -16,9 +16,10 @@ public sealed class ClubScope(ClubContext context, AppDbContext db)
         if (db.ChangeTracker.Entries().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Save pending changes before switching clubs (RN-TEN-001).");
 
-        context.ClubId = clubId;
-        // Conexão já aberta (transação em curso): o interceptor só roda na abertura, então grava aqui.
+        // Conexão já aberta (transação em curso): o interceptor só roda na abertura, então grava aqui. O banco vem antes do
+        // contexto: se a gravação falhar, o filtro do EF e o RLS continuam no mesmo clube.
         if (db.Database.GetDbConnection().State == ConnectionState.Open)
             await db.Database.ExecuteSqlAsync($"SELECT set_config('app.club_id', {clubId.ToString()}, false)", ct);
+        context.ClubId = clubId;
     }
 }

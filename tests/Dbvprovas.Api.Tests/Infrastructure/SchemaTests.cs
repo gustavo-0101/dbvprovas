@@ -56,7 +56,7 @@ public sealed class SchemaTests(PostgresFixture db)
     }
 
     // O papel do app recebe exatamente o que o R1 usa (D-121): sem DELETE fora da limpeza de pedidos de entrada e de
-    // sessões, e auditoria só com SELECT e INSERT.
+    // sessões, e auditoria só com SELECT e INSERT. O UPDATE por coluna da conta e do consentimento fica nos testes abaixo.
     [Fact]
     public async Task Schema_grants_app_role_exactly_the_r1_privileges()
     {
@@ -66,7 +66,7 @@ public sealed class SchemaTests(PostgresFixture db)
             "admin_access_requests:INSERT", "admin_access_requests:SELECT", "admin_access_requests:UPDATE",
             "admin_club_overview:SELECT", "audit_entries:INSERT", "audit_entries:SELECT",
             "club_directory:SELECT", "clubs:INSERT", "clubs:SELECT", "clubs:UPDATE",
-            "consents:INSERT", "consents:SELECT", "consents:UPDATE",
+            "consents:INSERT", "consents:SELECT",
             "director_nominations:INSERT", "director_nominations:SELECT", "director_nominations:UPDATE",
             "email_outbox:INSERT", "email_outbox:SELECT", "email_outbox:UPDATE",
             "founding_records:INSERT", "founding_records:SELECT",
@@ -117,8 +117,49 @@ public sealed class SchemaTests(PostgresFixture db)
     public async Task Personal_account_columns_are_closed_to_the_app()
     {
         Assert.Equal(new SortedSet<string>(StringComparer.Ordinal) { "created_at", "id", "is_platform_admin", "person_id" },
-            await AppAccountColumnsAsync("SELECT"));
-        Assert.Equal(new SortedSet<string>(StringComparer.Ordinal) { "email" }, await AppAccountColumnsAsync("UPDATE"));
+            await AppColumnsAsync("accounts", "SELECT"));
+        Assert.Equal(new SortedSet<string>(StringComparer.Ordinal) { "email" }, await AppColumnsAsync("accounts", "UPDATE"));
+    }
+
+    // No consentimento, o app só atualiza as colunas das transições: o clube aprovado na fundação e o encerramento ou a
+    // revogação. Titular, tipo, contexto e versão do termo não mudam por ele (CA-PRV-008, D-121).
+    [Fact]
+    public async Task CA_PRV_008_App_updates_only_the_transition_columns_of_a_consent()
+    {
+        Assert.Equal(new SortedSet<string>(StringComparer.Ordinal) { "club_id", "end_cause", "ended_at", "revoked_at" },
+            await AppColumnsAsync("consents", "UPDATE"));
+    }
+
+    // Nem o admin no clube nem o titular mexem no contexto ou no titular do consentimento, nem junto com a revogação nem
+    // para o mesmo valor: o privilégio por coluna barra antes do RLS. O titular continua revogando o próprio (CA-PRV-008, D-121).
+    [Fact]
+    public async Task CA_PRV_008_Consent_context_and_holder_never_change_but_the_holder_still_revokes()
+    {
+        var club = await TestData.CreateClubAsync(db);
+        var member = await TestData.CreateMemberAsync(db, club, "Titular Teste");
+        var admin = await TestData.CreateAdminAsync(db);
+        var requester = await TestData.CreatePersonAsync(db, "Solicitante Teste");
+        var request = await CreateFoundingRequestAsync(requester, club, "Approved");
+        var consent = await OwnerSql.ScalarAsync<Guid>(db.OwnerConnectionString,
+            "SELECT id FROM consents WHERE person_id = @p AND club_id = @c", ("p", member.PersonId), ("c", club));
+        const string WithRequest = "UPDATE consents SET founding_request_id = @request, revoked_at = now() WHERE id = @id";
+
+        var adminWithRequest = await AppErrorAsync(club, admin.PersonId, platformAdmin: true, WithRequest, ("request", request), ("id", consent));
+        var holderWithRequest = await AppErrorAsync(club, member.PersonId, platformAdmin: false, WithRequest, ("request", request), ("id", consent));
+        var holderSamePerson = await AppErrorAsync(club, member.PersonId, platformAdmin: false,
+            "UPDATE consents SET person_id = @person WHERE id = @id", ("person", member.PersonId), ("id", consent));
+        var untouched = await OwnerSql.ScalarAsync<bool>(db.OwnerConnectionString,
+            "SELECT revoked_at IS NULL AND founding_request_id IS NULL FROM consents WHERE id = @id", ("id", consent));
+        var revoked = await AppExecuteAsync(club, member.PersonId, platformAdmin: false,
+            "UPDATE consents SET revoked_at = now() WHERE id = @id", ("id", consent));
+
+        Assert.Equal(Npgsql.PostgresErrorCodes.InsufficientPrivilege, adminWithRequest);
+        Assert.Equal(Npgsql.PostgresErrorCodes.InsufficientPrivilege, holderWithRequest);
+        Assert.Equal(Npgsql.PostgresErrorCodes.InsufficientPrivilege, holderSamePerson);
+        Assert.True(untouched);
+        Assert.Equal(1, revoked);
+        Assert.True(await OwnerSql.ScalarAsync<bool>(db.OwnerConnectionString,
+            "SELECT revoked_at IS NOT NULL FROM consents WHERE id = @id", ("id", consent)));
     }
 
     // Unicidades do R1 no banco (RN-TEN-006, D-170, D-163, RN-JOIN-006, D-162, RN-ID-001): cada índice existe e é único.
@@ -249,14 +290,16 @@ public sealed class SchemaTests(PostgresFixture db)
         Assert.Single(shown);
     }
 
-    private async Task<SortedSet<string>> AppAccountColumnsAsync(string privilege)
+    // A visão lista também as colunas de um privilégio dado à tabela inteira: tabela com UPDATE de tabela traz todas.
+    private async Task<SortedSet<string>> AppColumnsAsync(string table, string privilege)
     {
         await using var connection = new Npgsql.NpgsqlConnection(db.OwnerConnectionString);
         await connection.OpenAsync();
         await using var command = new Npgsql.NpgsqlCommand("""
             SELECT column_name FROM information_schema.column_privileges
-            WHERE grantee = 'dbv_app' AND table_schema = 'public' AND table_name = 'accounts' AND privilege_type = @privilege
+            WHERE grantee = 'dbv_app' AND table_schema = 'public' AND table_name = @table AND privilege_type = @privilege
             """, connection);
+        command.Parameters.AddWithValue("table", table);
         command.Parameters.AddWithValue("privilege", privilege);
         var columns = new SortedSet<string>(StringComparer.Ordinal);
         await using (var reader = await command.ExecuteReaderAsync())
