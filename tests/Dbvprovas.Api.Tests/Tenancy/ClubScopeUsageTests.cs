@@ -33,6 +33,15 @@ public sealed class ClubScopeUsageTests
         @"\b\w*[cC]ontext\.ClubId\s*=(?!=)|GetRequiredService<ClubContext>\(\)\.ClubId\s*=(?!=)",
         RegexOptions.CultureInvariant);
 
+    // PC-09, RNF-TEN-006, CA-TEN-001: pessoa, conta e papel de admin do contexto só são atribuídos pelo módulo de identidade,
+    // a partir da conta da sessão. Mesma busca de melhor esforço do clube, com `??=`; não pega `==`, `=>` nem inicializador.
+    private const string IdentityModule = "src/Dbvprovas.Api/Modules/Identity/";
+
+    private static readonly Regex PersonAssignment = new(
+        @"\b\w*[cC]ontext\.(?:PersonId|AccountId|IsPlatformAdmin)\s*(?:\?\?)?=(?![=>])"
+        + @"|GetRequiredService<ClubContext>\(\)\.(?:PersonId|AccountId|IsPlatformAdmin)\s*(?:\?\?)?=(?![=>])",
+        RegexOptions.CultureInvariant);
+
     [Fact]
     public void CA_TEN_001_Club_scope_switch_is_used_only_by_specific_paths()
     {
@@ -55,6 +64,19 @@ public sealed class ClubScopeUsageTests
             .ToList();
 
         Assert.Equal(ClubAssigners, assigners);
+    }
+
+    [Fact]
+    public void CA_TEN_001_Person_and_admin_of_the_context_are_assigned_only_by_identity()
+    {
+        var assigners = SourceFiles()
+            .Where(file => PersonAssignment.IsMatch(file.Text))
+            .Select(file => file.Path)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Contains("src/Dbvprovas.Api/Modules/Identity/SessionSetup.cs", assigners);
+        Assert.All(assigners, file => Assert.StartsWith(IdentityModule, file, StringComparison.Ordinal));
     }
 
     private static IEnumerable<(string Path, string Text)> SourceFiles()

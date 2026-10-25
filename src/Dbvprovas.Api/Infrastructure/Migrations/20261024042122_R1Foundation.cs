@@ -889,7 +889,12 @@ namespace Dbvprovas.Api.Infrastructure.Migrations
                 GRANT INSERT ON accounts TO dbv_app;
                 GRANT UPDATE (email) ON accounts TO dbv_app;
                 GRANT SELECT, INSERT, UPDATE ON units, role_assignments, director_nominations, founding_requests,
-                    admin_access_requests, notifications, email_outbox TO dbv_app;
+                    notifications, email_outbox TO dbv_app;
+                -- No pedido de acesso do admin, o app só atualiza a autorização, a negação e a revogação: clube, solicitante,
+                -- motivo, alvos, campos e prazo ficam fora do alcance dele (PERM-AUD-003, CA-AUD-009, D-121).
+                GRANT SELECT, INSERT ON admin_access_requests TO dbv_app;
+                GRANT UPDATE (status, decided_by_person_id, decided_at, valid_until, revoked_by_person_id, revoked_at)
+                    ON admin_access_requests TO dbv_app;
                 -- No consentimento, o app só atualiza o clube aprovado na fundação e o encerramento ou a revogação: titular, tipo,
                 -- contexto e versão do termo ficam fora do alcance dele (CA-PRV-008, D-121).
                 GRANT SELECT, INSERT ON consents TO dbv_app;

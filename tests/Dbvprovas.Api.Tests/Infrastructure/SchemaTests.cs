@@ -56,14 +56,15 @@ public sealed class SchemaTests(PostgresFixture db)
     }
 
     // O papel do app recebe exatamente o que o R1 usa (D-121): sem DELETE fora da limpeza de pedidos de entrada e de
-    // sessões, e auditoria só com SELECT e INSERT. O UPDATE por coluna da conta e do consentimento fica nos testes abaixo.
+    // sessões, e auditoria só com SELECT e INSERT. O UPDATE por coluna da conta, do consentimento e do pedido de acesso do
+    // admin fica nos testes abaixo.
     [Fact]
     public async Task Schema_grants_app_role_exactly_the_r1_privileges()
     {
         var expected = new SortedSet<string>(StringComparer.Ordinal)
         {
             "accounts:INSERT",
-            "admin_access_requests:INSERT", "admin_access_requests:SELECT", "admin_access_requests:UPDATE",
+            "admin_access_requests:INSERT", "admin_access_requests:SELECT",
             "admin_club_overview:SELECT", "audit_entries:INSERT", "audit_entries:SELECT",
             "club_directory:SELECT", "clubs:INSERT", "clubs:SELECT", "clubs:UPDATE",
             "consents:INSERT", "consents:SELECT",
@@ -128,6 +129,60 @@ public sealed class SchemaTests(PostgresFixture db)
     {
         Assert.Equal(new SortedSet<string>(StringComparer.Ordinal) { "club_id", "end_cause", "ended_at", "revoked_at" },
             await AppColumnsAsync("consents", "UPDATE"));
+    }
+
+    // No pedido de acesso do admin, o app só atualiza as colunas da autorização, da negação e da revogação; o vencimento é
+    // calculado, não gravado. Clube, solicitante, motivo, alvos, campos e prazo não mudam por ele (PERM-AUD-003, CA-AUD-009, D-121).
+    [Fact]
+    public async Task CA_AUD_009_App_updates_only_the_decision_columns_of_an_admin_access_request()
+    {
+        Assert.Equal(new SortedSet<string>(StringComparer.Ordinal)
+            {
+                "decided_at", "decided_by_person_id", "revoked_at", "revoked_by_person_id", "status", "valid_until",
+            },
+            await AppColumnsAsync("admin_access_requests", "UPDATE"));
+    }
+
+    // O diretor do clube decide o pedido, mas não troca os alvos, os campos nem o solicitante: o privilégio por coluna barra
+    // antes do RLS, que deixaria passar (PERM-AUD-003, CA-AUD-009, D-121).
+    [Fact]
+    public async Task CA_AUD_009_Club_director_decides_but_never_changes_what_the_admin_asked()
+    {
+        var club = await TestData.CreateClubAsync(db);
+        var director = await TestData.CreateMemberAsync(db, club, "Diretora Teste", role: RoleCode.Director);
+        var target = await TestData.CreateMemberAsync(db, club, "Membro Teste");
+        var admin = await TestData.CreateAdminAsync(db);
+        var request = Guid.CreateVersion7();
+        await OwnerSql.ExecuteAsync(db.OwnerConnectionString, """
+            INSERT INTO admin_access_requests (id, club_id, requested_by_person_id, reason_code, target_membership_ids, fields, status, created_at, expires_at)
+                VALUES (@id, @club, @admin, 'ClubSupportRequest', ARRAY[@target]::uuid[], ARRAY['AdultProfile'], 'Pending', now(), now() + interval '7 days')
+            """,
+            ("id", request), ("club", club), ("admin", admin.PersonId), ("target", target.MembershipId));
+
+        var targets = await AppDeniedAsync(club, director.PersonId,
+            "UPDATE admin_access_requests SET target_membership_ids = @targets WHERE id = @id",
+            ("targets", new[] { target.MembershipId, director.MembershipId }), ("id", request));
+        var fields = await AppDeniedAsync(club, director.PersonId,
+            "UPDATE admin_access_requests SET fields = ARRAY['AdultProfile', 'Email'] WHERE id = @id", ("id", request));
+        var requester = await AppDeniedAsync(club, director.PersonId,
+            "UPDATE admin_access_requests SET requested_by_person_id = @person WHERE id = @id", ("person", director.PersonId), ("id", request));
+        var untouched = await OwnerSql.ScalarAsync<bool>(db.OwnerConnectionString, """
+            SELECT target_membership_ids = ARRAY[@target]::uuid[] AND fields = ARRAY['AdultProfile'] AND requested_by_person_id = @admin
+            FROM admin_access_requests WHERE id = @id
+            """, ("target", target.MembershipId), ("admin", admin.PersonId), ("id", request));
+        var decided = await AppExecuteAsync(club, director.PersonId, platformAdmin: false,
+            "UPDATE admin_access_requests SET status = 'Authorized' WHERE id = @id", ("id", request));
+
+        foreach (var error in new[] { targets, fields, requester })
+        {
+            Assert.Equal(Npgsql.PostgresErrorCodes.InsufficientPrivilege, error.SqlState);
+            Assert.StartsWith("permission denied", error.MessageText, StringComparison.Ordinal);
+        }
+
+        Assert.True(untouched);
+        Assert.Equal(1, decided);
+        Assert.Equal("Authorized", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
+            "SELECT status FROM admin_access_requests WHERE id = @id", ("id", request)));
     }
 
     // Nem o admin no clube nem o titular mexem no contexto ou no titular do consentimento, nem junto com a revogação nem
@@ -347,6 +402,10 @@ public sealed class SchemaTests(PostgresFixture db)
         var error = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => AppExecuteAsync(club, person, platformAdmin, sql, parameters));
         return error.SqlState;
     }
+
+    // Erro completo de um membro no clube, para distinguir o privilégio (mensagem "permission denied") do RLS.
+    private Task<Npgsql.PostgresException> AppDeniedAsync(Guid club, Guid person, string sql, params (string Name, object Value)[] parameters) =>
+        Assert.ThrowsAsync<Npgsql.PostgresException>(() => AppExecuteAsync(club, person, platformAdmin: false, sql, parameters));
 
     // Seed fictício do R1: diretores, secretários, tesoureira, consentimentos e o admin (RF-TEN-003, PC-04).
     [Fact]

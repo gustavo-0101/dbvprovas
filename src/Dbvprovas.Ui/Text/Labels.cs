@@ -178,4 +178,11 @@ public static class Labels
         ProblemCodes.PendingRequestExists => "Você já tem um pedido pendente.",
         _ => "Não foi possível concluir. Tente de novo.",
     };
+
+    // Versão do termo na tela (RN-PRV-002): o ID gravado no consentimento nunca aparece cru.
+    public static string TermVersion(string? version) => version switch
+    {
+        ConsentTerms.AdultOwnParticipationVersion => "Participação própria do adulto, versão 1",
+        _ => "Versão não identificada",
+    };
 }

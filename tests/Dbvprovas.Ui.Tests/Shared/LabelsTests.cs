@@ -26,6 +26,15 @@ public sealed class LabelsTests
         Assert.Equal("Não foi possível concluir. Tente de novo.", Labels.Problem("codigo.desconhecido"));
     }
 
+    // RN-PRV-002: a versão do termo aparece com texto em pt-BR; versão desconhecida não mostra o ID técnico.
+    [Fact]
+    public void Term_version_label_names_the_current_version_and_hides_unknown_ones()
+    {
+        Assert.Equal("Participação própria do adulto, versão 1", Labels.TermVersion(ConsentTerms.AdultOwnParticipationVersion));
+        Assert.Equal("Versão não identificada", Labels.TermVersion("adult-own-participation-old"));
+        Assert.Equal("Versão não identificada", Labels.TermVersion(null));
+    }
+
     // D-160: os 14 motivos têm exatamente o texto da tabela confirmada; um motivo novo nos contratos obriga a revisar a tabela.
     [Fact]
     public void Reason_labels_match_the_confirmed_table()

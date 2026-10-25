@@ -2,7 +2,7 @@
 <fieldset class="consent-term">
     <legend>Termo de participação</legend>
     <p>Ao enviar, você consente em participar do @ClubName e autoriza o clube a usar os seus dados de cadastro conforme as regras do app. Você pode revogar quando quiser, em Minha participação.</p>
-    <p class="consent-version">Versão do termo: @ConsentTerms.AdultOwnParticipationVersion</p>
+    <p class="consent-version">Versão do termo: @Labels.TermVersion(ConsentTerms.AdultOwnParticipationVersion)</p>
     <label>
         <input type="checkbox" checked="@Accepted" @onchange="ChangedAsync" />
         Li e aceito o termo.
