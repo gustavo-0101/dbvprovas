@@ -1,13 +1,27 @@
 using Dbvprovas.Api.Infrastructure;
 using Dbvprovas.Api.Modules.Audit;
+using Dbvprovas.Api.Modules.Audit.AdminAccess;
 using Dbvprovas.Api.Modules.Identity;
+using Dbvprovas.Api.Modules.Joining;
+using Dbvprovas.Api.Modules.Notifications;
+using Dbvprovas.Api.Modules.Organization;
+using Dbvprovas.Api.Modules.Privacy;
 using Dbvprovas.Api.Modules.Tenancy;
+using Dbvprovas.Api.Modules.Tenancy.Founding;
 using Dbvprovas.Api.Site;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddObservability(); // D-115, D-116
 builder.Services.AddDatabase(); // RNF-TEN-001
+builder.Services.AddR1Core(); // relógio, tarefas e serviços comuns do R1
+builder.Services.AddIdentityModule();
+builder.Services.AddNotificationsModule();
+builder.Services.AddFoundingModule();
+builder.Services.AddOrganizationModule();
+builder.Services.AddJoiningModule();
+builder.Services.AddPrivacyModule();
+builder.Services.AddAdminAccessModule();
 builder.AddSessions(); // D-120, RNF-TEN-002
 builder.Services.AddHealth(); // RF-AUD-001
 builder.Services.AddProblemDetails(); // RF-AUD-002
@@ -34,6 +48,13 @@ app.UseAntiforgery(); // D-112
 app.MapHealth();
 app.MapMe();
 app.MapClubs();
+app.MapIdentityModule();
+app.MapNotificationsModule();
+app.MapFoundingModule();
+app.MapOrganizationModule();
+app.MapJoiningModule();
+app.MapPrivacyModule();
+app.MapAdminAccessModule();
 
 // O site é anônimo de forma explícita (CA-TEN-006). Só os endpoints de resource-collection do
 // MapRazorComponents ignoram as convenções de cada chamada (dotnet/aspnetcore#65327), por isso o
@@ -52,7 +73,6 @@ site.WithMetadata(new HttpMethodMetadata(["GET", "HEAD"]));
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapDevLogin();
     app.MapOpenApi().AllowAnonymous();
     await DevDatabase.InitializeAsync(app.Services); // RF-TEN-003
 }

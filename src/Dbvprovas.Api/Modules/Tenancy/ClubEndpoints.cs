@@ -30,10 +30,10 @@ public static class ClubEndpoints
     {
         var members = await (
             from m in db.Memberships
-            where m.ClubId == clubId && m.EndedAt == null
+            where m.ClubId == clubId && m.Status == MembershipStatus.Active
             join p in db.Persons on m.PersonId equals p.Id
             orderby p.Name
-            select new MemberResponse(m.Id, p.Name)).ToListAsync(ct);
+            select new MemberResponse(m.Id, p.Name ?? string.Empty, null)).ToListAsync(ct);
         return TypedResults.Ok(members);
     }
 
@@ -41,9 +41,9 @@ public static class ClubEndpoints
     {
         var member = await (
             from m in db.Memberships
-            where m.Id == membershipId && m.ClubId == clubId && m.EndedAt == null
+            where m.Id == membershipId && m.ClubId == clubId && m.Status == MembershipStatus.Active
             join p in db.Persons on m.PersonId equals p.Id
-            select new MemberResponse(m.Id, p.Name)).SingleOrDefaultAsync(ct);
+            select new MemberResponse(m.Id, p.Name ?? string.Empty, null)).SingleOrDefaultAsync(ct);
         return member is null ? TypedResults.NotFound() : TypedResults.Ok(member);
     }
 }

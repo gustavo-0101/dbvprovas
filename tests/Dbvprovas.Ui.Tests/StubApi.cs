@@ -16,6 +16,10 @@ internal sealed class StubApi : HttpMessageHandler
     public Exception? Failure { get; set; }
     public List<string> Requests { get; } = [];
 
+    // Corpo e endereço completo (com a query) de cada pedido, para a tela conferir o que mandou.
+    public List<(string Key, string Body)> Bodies { get; } = [];
+    public List<string> Uris { get; } = [];
+
     public void Respond(HttpMethod method, string path, HttpStatusCode status, object? body = null) =>
         _routes[$"{method} /{path}"] = () =>
         {
@@ -36,16 +40,26 @@ internal sealed class StubApi : HttpMessageHandler
     public void Hold(HttpMethod method, string path, Task<HttpResponseMessage> response) =>
         _held[$"{method} /{path}"] = response;
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var key = $"{request.Method} {request.RequestUri!.AbsolutePath}";
+        var uri = request.RequestUri!;
+        var key = $"{request.Method} {uri.AbsolutePath}";
+        var exact = $"{request.Method} {uri.PathAndQuery}";
         Requests.Add($"{key} {request.Headers.Authorization}");
+        Uris.Add(exact);
+        if (request.Content is not null)
+            Bodies.Add((key, await request.Content.ReadAsStringAsync(cancellationToken)));
         if (Offline)
             throw new HttpRequestException("offline");
         if (Failure is not null)
             throw Failure;
+        // A resposta registrada com a query vence a registrada só pelo caminho.
+        if (_held.TryGetValue(exact, out var heldExact))
+            return await heldExact;
         if (_held.TryGetValue(key, out var held))
-            return held;
-        return Task.FromResult(_routes.TryGetValue(key, out var respond) ? respond() : new HttpResponseMessage(HttpStatusCode.NotFound));
+            return await held;
+        if (_routes.TryGetValue(exact, out var respondExact))
+            return respondExact();
+        return _routes.TryGetValue(key, out var respond) ? respond() : new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 }

@@ -6,7 +6,7 @@ namespace Dbvprovas.Api.Modules.Tenancy;
 // RN-TEN-001, D-121, D-124
 public sealed class ClubSessionInterceptor(ClubContext context) : DbConnectionInterceptor
 {
-    private const string Sql = "SELECT set_config('app.club_id', @club, false), set_config('app.person_id', @person, false)";
+    private const string Sql = "SELECT set_config('app.club_id', @club, false), set_config('app.person_id', @person, false), set_config('app.platform_admin', @admin, false)";
 
     public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
     {
@@ -24,16 +24,17 @@ public sealed class ClubSessionInterceptor(ClubContext context) : DbConnectionIn
     {
         var command = connection.CreateCommand();
         command.CommandText = Sql;
-        Add(command, "club", context.ClubId);
-        Add(command, "person", context.PersonId);
+        Add(command, "club", context.ClubId?.ToString());
+        Add(command, "person", context.PersonId?.ToString());
+        Add(command, "admin", context.IsPlatformAdmin ? "true" : null);
         return command;
     }
 
-    private static void Add(DbCommand command, string name, Guid? value)
+    private static void Add(DbCommand command, string name, string? value)
     {
         var parameter = command.CreateParameter();
         parameter.ParameterName = name;
-        parameter.Value = value?.ToString() ?? string.Empty;
+        parameter.Value = value ?? string.Empty;
         command.Parameters.Add(parameter);
     }
 }

@@ -1,4 +1,5 @@
 using Dbvprovas.Api.Infrastructure;
+using Dbvprovas.Contracts;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dbvprovas.Api.Modules.Tenancy;
@@ -17,7 +18,7 @@ public sealed class ClubMembershipFilter : IEndpointFilter
             return TypedResults.NotFound();
 
         var isMember = await db.Memberships.AnyAsync(
-            m => m.ClubId == clubId && m.PersonId == personId && m.EndedAt == null,
+            m => m.ClubId == clubId && m.PersonId == personId && m.Status == MembershipStatus.Active,
             http.RequestAborted);
         if (!isMember)
             return TypedResults.NotFound();

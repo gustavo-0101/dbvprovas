@@ -23,9 +23,15 @@ public sealed class ClubWriteGuardInterceptor(ClubContext context) : SaveChanges
         if (db is null)
             return;
 
-        var outside = db.ChangeTracker.Entries<IClubOwned>().Any(e =>
+        var outside = db.ChangeTracker.Entries().Any(e =>
             e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted
-            && e.Entity.ClubId != context.ClubId);
+            && e.Entity switch
+            {
+                IClubOwned owned => owned.ClubId != context.ClubId,
+                IMaybeClubOwned maybe => maybe.ClubId is { } club && club != context.ClubId,
+                Club target => target.Id != context.ClubId,
+                _ => false,
+            });
         if (outside)
             throw new ClubIsolationException();
     }

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using Dbvprovas.Api.Infrastructure;
 using Dbvprovas.Api.Tests.Infrastructure;
 using Dbvprovas.Contracts;
@@ -28,17 +29,17 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
     // O site e os arquivos estáticos são só leitura.
     private static readonly string[] SiteMethods = ["GET", "HEAD"];
 
-    // Páginas do site e o endpoint de redirecionamento do Blazor (D-112). Os arquivos estáticos entram
-    // pelo marcador do MapStaticAssets e a lista de recursos pelo mapa de importação das páginas;
-    // nunca por prefixo de caminho. A rota de página só vale com o marcador de componente do
-    // MapRazorComponents; o redirecionamento não tem marcador próprio e fica pela rota exata.
-    private static readonly string[] SitePageRoutes =
-    [
-        "/",
-        "/club",
-        "/not-found",
-    ];
+    // Páginas do site: a rota exata de cada componente com @page da biblioteca de telas (D-112, CA-TEN-006). Página nova
+    // entra sozinha, sem prefixo, e só vale com o marcador de componente do MapRazorComponents.
+    private static readonly string[] SitePageRoutes = typeof(Dbvprovas.Ui.Routes).Assembly.GetExportedTypes()
+        .SelectMany(type => type.GetCustomAttributes<RouteAttribute>(inherit: false))
+        .Select(route => "/" + route.Template.TrimStart('/'))
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
 
+    // As páginas e o endpoint de redirecionamento do Blazor (D-112), que não tem marcador próprio e fica pela rota exata.
+    // Os arquivos estáticos entram pelo marcador do MapStaticAssets e a lista de recursos pelo mapa de importação das
+    // páginas; nunca por prefixo de caminho.
     private static readonly string[] AnonymousSiteRoutes = [.. SitePageRoutes, "/_framework/opaque-redirect"];
 
     private static readonly string[] ResourceCollectionNames =
@@ -61,6 +62,48 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
         foreach (var endpoint in endpoints)
             Assert.True(HasExplicitPolicy(endpoint, allowed),
                 $"Endpoint without explicit policy: {Methods(endpoint)} {endpoint.RoutePattern.RawText}");
+    }
+
+    // As rotas de página derivadas são exatas e ficam fora da API, da saúde e dos arquivos do framework (CA-TEN-006).
+    [Fact]
+    public void CA_TEN_006_Site_page_routes_are_exact_and_outside_api()
+    {
+        Assert.Contains("/", SitePageRoutes);
+        Assert.Contains("/club", SitePageRoutes);
+        Assert.Contains("/not-found", SitePageRoutes);
+        foreach (var route in SitePageRoutes)
+            Assert.True(IsExactPageRoute(route), route);
+    }
+
+    [Theory]
+    [InlineData("/{slug}", false)]
+    [InlineData("/{a}/{b}", false)]
+    [InlineData("/{a}/x", false)]
+    [InlineData("/api/x", false)]
+    [InlineData("/_framework/x", false)]
+    [InlineData("/club/*", false)]
+    [InlineData("/", true)]
+    [InlineData("/club", true)]
+    [InlineData("/club/members/{membershipId:guid}", true)]
+    [InlineData("admin/clubs/{clubId:guid}/director", true)]
+    public void CA_TEN_006_Page_route_shape_is_checked(string route, bool exact)
+    {
+        Assert.Equal(exact, IsExactPageRoute(route));
+    }
+
+    // Página anônima só com o primeiro segmento literal (ou a raiz), sem curinga e fora da API, da saúde e dos arquivos do
+    // framework: um parâmetro no começo atenderia qualquer caminho, inclusive /api/... desconhecido, que é o 404 da API
+    // (CA-TEN-006, D-112).
+    private static bool IsExactPageRoute(string route)
+    {
+        var path = "/" + route.TrimStart('/');
+        if (path.Contains('*'))
+            return false;
+        foreach (var prefix in new[] { "/api", "/health", "/openapi", "/_framework", "/_content" })
+            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+        var segments = RoutePatternFactory.Parse(path).PathSegments;
+        return segments.Count == 0 || segments[0].Parts.All(part => part is RoutePatternLiteralPart);
     }
 
     [Fact]

@@ -27,5 +27,12 @@ services:
       - "127.0.0.1:18888:18888"
       - "127.0.0.1:4317:18889"
 
+  # Caixa de e-mail de dev (D-172): recebe SMTP em localhost:1025; painel em http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.31
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
 volumes:
   pgdata:

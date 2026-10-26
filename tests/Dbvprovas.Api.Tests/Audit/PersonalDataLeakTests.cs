@@ -20,8 +20,8 @@ public sealed class PersonalDataLeakTests(PostgresFixture db)
         var member = await TestData.CreateClubWithMemberAsync(db, sentinel);
         using var traces = new ActivityCapture();
         var errorBodies = new List<string>();
-        await using var dev = new ApiFactory(db, "Development");
-        using var client = dev.CreateClientWithToken(await dev.SignInAsync(member.AccountId));
+        await using var dev = new ApiFactory(db, "Development") { UseTestAuthentication = true };
+        using var client = dev.CreateClientAs(member.AccountId);
         using var anonymous = dev.CreateClient();
 
         foreach (var route in new[]
@@ -53,7 +53,7 @@ public sealed class PersonalDataLeakTests(PostgresFixture db)
         await using var faulty = new ApiFactory(db, "Production") { UseTestAuthentication = true };
         faulty.ExtraInterceptors.Add(new FailingCommandInterceptor("persons"));
         using var faultyClient = faulty.CreateClient();
-        faultyClient.DefaultRequestHeaders.Add(TestAuthHandler.PersonHeader, member.PersonId.ToString());
+        faultyClient.DefaultRequestHeaders.Add(TestAuthHandler.AccountHeader, member.AccountId.ToString());
         using (var failure = await faultyClient.GetAsync(ApiRoutes.Me))
         {
             Assert.Equal(HttpStatusCode.InternalServerError, failure.StatusCode);

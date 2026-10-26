@@ -30,6 +30,7 @@ dotnet run --project src/Dbvprovas.Api --launch-profile http
 - API e site: http://localhost:5080 (mesma origem). Em dev, a API aplica as migrations e um seed fictício ao subir, e o site oferece a entrada com as contas fictícias.
 - Saúde: http://localhost:5080/health/ready
 - Logs, traces e métricas (Aspire Dashboard): http://localhost:18888
+- O Compose também sobe o Mailpit, a caixa de e-mail de dev: o painel fica em http://localhost:8025.
 
 ## Testes
 

@@ -9,10 +9,12 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.Extensions.Telemetry.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dbvprovas.Api\Dbvprovas.Api.csproj" />
+    <ProjectReference Include="..\..\src\Dbvprovas.Ui\Dbvprovas.Ui.csproj" />
     <ProjectReference Include="..\Dbvprovas.TestSupport\Dbvprovas.TestSupport.csproj" />
   </ItemGroup>
   <ItemGroup>

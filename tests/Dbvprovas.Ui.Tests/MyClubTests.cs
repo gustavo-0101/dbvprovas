@@ -44,7 +44,7 @@ public sealed class MyClubTests
     public void CA_TEN_007_My_club_shows_not_found_on_404()
     {
         using var ui = new UiHarness();
-        ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Aurora", [new ClubSummary(UiHarness.ClubId, "Clube Águias")]));
+        ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Aurora", [new ClubSummary(UiHarness.ClubId, "Clube Águias", Guid.NewGuid(), [RoleCode.Director])], true, true, false));
 
         var page = ui.Context.Render<MyClub>();
 
@@ -87,7 +87,7 @@ public sealed class MyClubTests
     public void My_club_without_membership_says_so()
     {
         using var ui = new UiHarness();
-        ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Heitor", []));
+        ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Heitor", [], true, true, false));
 
         var page = ui.Context.Render<MyClub>();
 
@@ -140,12 +140,12 @@ public sealed class MyClubTests
                 expectedMarkup = "Não foi possível falar com o servidor.";
                 break;
             case "not-found":
-                ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Aurora", [new ClubSummary(UiHarness.ClubId, "Clube Águias")]));
+                ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Aurora", [new ClubSummary(UiHarness.ClubId, "Clube Águias", Guid.NewGuid(), [RoleCode.Director])], true, true, false));
                 expectedHeading = "Meu clube";
                 expectedMarkup = "Clube não encontrado.";
                 break;
             case "no-club":
-                ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Heitor", []));
+                ui.Api.Respond(HttpMethod.Get, ApiRoutes.Me, HttpStatusCode.OK, new MeResponse("Heitor", [], true, true, false));
                 expectedHeading = "Meu clube";
                 expectedMarkup = "Você ainda não participa de nenhum clube.";
                 break;
