@@ -14,6 +14,11 @@ public static class OrganizationEndpoints
         club.MapPost("/units", async (UnitRequest body, UnitService service, CancellationToken ct) => (await service.CreateAsync(body, ct)).ToHttp());
         club.MapPut("/units/{unitId:guid}", async (Guid unitId, UnitRequest body, UnitService service, CancellationToken ct) =>
             (await service.UpdateAsync(unitId, body, ct)).ToHttp());
+        club.MapGet("/leaders", async (RoleAssignmentService service, CancellationToken ct) => (await service.ListLeadersAsync(ct)).ToHttp());
+        club.MapPost("/role-assignments", async (AssignRoleRequest body, RoleAssignmentService service, CancellationToken ct) =>
+            (await service.AssignAsync(body, ct)).ToHttp());
+        club.MapPost("/role-assignments/{assignmentId:guid}/end", async (Guid assignmentId, RoleAssignmentService service, CancellationToken ct) =>
+            (await service.EndAsync(assignmentId, ct)).ToHttp());
         return club;
     }
 }

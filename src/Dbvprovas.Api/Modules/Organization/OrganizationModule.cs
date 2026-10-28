@@ -6,6 +6,7 @@ public static class OrganizationModule
     public static IServiceCollection AddOrganizationModule(this IServiceCollection services)
     {
         services.AddScoped<UnitService>();
+        services.AddScoped<RoleAssignmentService>();
         return services;
     }
 
