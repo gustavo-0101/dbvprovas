@@ -67,7 +67,7 @@ public sealed class DirectorNominationService(
         return Outcome<NominationResponse>.Ok(ToResponse(nomination));
     }
 
-    // Só a diretora e o indicado veem a indicação vigente.
+    // Diretora e indicado veem a pendência; os demais membros recebem vazio (CA-ORG-004, CA-ORG-005).
     public async Task<Outcome<CurrentNominationResponse>> CurrentAsync(CancellationToken ct)
     {
         var actor = await actors.GetClubActorAsync(ct);
@@ -76,11 +76,8 @@ public sealed class DirectorNominationService(
         var now = clock.GetUtcNow();
         var nomination = await db.DirectorNominations
             .Where(n => n.Status == NominationStatus.Pending && n.ExpiresAt > now).SingleOrDefaultAsync(ct);
-        if (nomination is not null && nomination.NomineeMembershipId != actor.MembershipId && !actor.IsDirector)
-            return Outcome.Forbidden();
-        if (nomination is null && !actor.IsDirector)
-            return Outcome<CurrentNominationResponse>.Ok(new CurrentNominationResponse(null));
-        return Outcome<CurrentNominationResponse>.Ok(new CurrentNominationResponse(nomination is null ? null : ToResponse(nomination)));
+        var visible = nomination is not null && (actor.IsDirector || nomination.NomineeMembershipId == actor.MembershipId);
+        return Outcome<CurrentNominationResponse>.Ok(new CurrentNominationResponse(visible ? ToResponse(nomination!) : null));
     }
 
     public async Task<Outcome> CancelAsync(Guid nominationId, CancellationToken ct)

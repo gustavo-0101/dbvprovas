@@ -165,6 +165,23 @@ public sealed class DirectorNominationTests(PostgresFixture db)
             result.Dispose();
     }
 
+    // CA-ORG-004, CA-ORG-005: membro que não é diretor nem indicado recebe a mesma resposta com e sem indicação.
+    [Fact]
+    public async Task CA_ORG_004_Ordinary_member_sees_the_same_current_nomination_with_or_without_one()
+    {
+        var a = await TestData.CreateClubAAsync(db);
+        await using var api = Api();
+        using var iara = api.CreateClientAs(a.Iara);
+
+        using var without = await iara.GetAsync(ApiRoutes.CurrentDirectorNomination(a.ClubId));
+        await NominateAsync(api.CreateClientAs(a.Aurora), a.ClubId, a.Caio.MembershipId);
+        using var with = await iara.GetAsync(ApiRoutes.CurrentDirectorNomination(a.ClubId));
+
+        Assert.Equal(HttpStatusCode.OK, without.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, with.StatusCode);
+        Assert.Equal(await without.Content.ReadAsStringAsync(), await with.Content.ReadAsStringAsync());
+    }
+
     // D-158: se a direção muda, a indicação posterior é negada e não deixa pendência.
     [Fact]
     public async Task CA_ORG_004_Nomination_after_director_replaced_is_denied_and_leaves_no_pending()
