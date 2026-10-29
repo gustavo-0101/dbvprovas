@@ -28,6 +28,9 @@ public sealed class DirectorNominationService(
         var clubId = context.ClubId!.Value;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await RowLocks.LockMembershipsAsync(db, [actor.MembershipId, body.NomineeMembershipId], ct);
+        if (!await db.RoleAssignments.AnyAsync(r => r.MembershipId == actor.MembershipId && r.ClubId == clubId
+                && r.Role == RoleCode.Director && r.EndedAt == null, ct))
+            return Outcome.Forbidden();
         var nominee = await (
             from m in db.Memberships
             where m.Id == body.NomineeMembershipId && m.ClubId == clubId

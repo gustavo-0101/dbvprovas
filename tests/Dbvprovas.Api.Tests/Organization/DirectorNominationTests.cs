@@ -164,4 +164,41 @@ public sealed class DirectorNominationTests(PostgresFixture db)
         foreach (var result in results)
             result.Dispose();
     }
+
+    // D-158: se a direção muda, a indicação posterior é negada e não deixa pendência.
+    [Fact]
+    public async Task CA_ORG_004_Nomination_after_director_replaced_is_denied_and_leaves_no_pending()
+    {
+        await using var api = Api();
+        var sequential = await TestData.CreateClubAAsync(db);
+        var sequentialAdmin = await TestData.CreateAdminAsync(db);
+        using var sequentialReplace = await api.CreateClientAs(sequentialAdmin).PostAsJsonAsync(ApiRoutes.AdminReplaceDirector(sequential.ClubId),
+            new ReplaceDirectorRequest(sequential.Dalva.MembershipId, ReasonCode.DirectorUnavailable));
+        using var sequentialNominate = await api.CreateClientAs(sequential.Aurora).PostAsJsonAsync(ApiRoutes.DirectorNominations(sequential.ClubId),
+            new NominateDirectorRequest(sequential.Iara.MembershipId));
+        Assert.Equal(HttpStatusCode.NoContent, sequentialReplace.StatusCode);
+        await ProblemAssert.HasCodeAsync(sequentialNominate, HttpStatusCode.Forbidden, ProblemCodes.PermissionDenied);
+        Assert.Equal(0, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM director_nominations WHERE club_id = @c AND status = 'Pending'", ("c", sequential.ClubId)));
+
+        for (var round = 0; round < 6; round++)
+        {
+            var a = await TestData.CreateClubAAsync(db);
+            var admin = await TestData.CreateAdminAsync(db);
+            using var aurora = api.CreateClientAs(a.Aurora);
+            using var adminClient = api.CreateClientAs(admin);
+
+            var results = await Task.WhenAll(
+                adminClient.PostAsJsonAsync(ApiRoutes.AdminReplaceDirector(a.ClubId),
+                    new ReplaceDirectorRequest(a.Dalva.MembershipId, ReasonCode.DirectorUnavailable)),
+                aurora.PostAsJsonAsync(ApiRoutes.DirectorNominations(a.ClubId), new NominateDirectorRequest(a.Iara.MembershipId)));
+
+            Assert.All(results, r => Assert.True(
+                r.IsSuccessStatusCode || r.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Conflict, r.StatusCode.ToString()));
+            Assert.Equal(0, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+                "SELECT count(*) FROM director_nominations WHERE club_id = @c AND status = 'Pending'", ("c", a.ClubId)));
+            foreach (var result in results)
+                result.Dispose();
+        }
+    }
 }
