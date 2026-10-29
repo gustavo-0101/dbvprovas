@@ -18,6 +18,9 @@
     case PageState.NoClub:
         <p>Você ainda não participa de nenhum clube.</p>
         break;
+    case PageState.Forbidden:
+        <p>Só a diretoria e a secretaria editam os dados do clube.</p>
+        break;
     default:
         @if (Message is not null)
         {
@@ -81,6 +84,12 @@
         if (Club is null)
         {
             State = PageState.NoClub;
+            return;
+        }
+
+        if (!IsDirectorOrSecretary)
+        {
+            State = PageState.Forbidden;
             return;
         }
 
