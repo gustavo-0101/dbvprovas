@@ -42,7 +42,7 @@
         {
             <form class="unit-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <h2>@(editingId is null ? "Nova unidade" : "Editar unidade")</h2>
-                <label>Nome <input class="unit-name" @bind="name" maxlength="80" /></label>
+                <label>Nome <input class="unit-name" @bind="name" maxlength="60" /></label>
                 <label>
                     Sexo
                     <select class="unit-sex" @bind="sex">

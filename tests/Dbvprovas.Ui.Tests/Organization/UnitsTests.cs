@@ -35,6 +35,7 @@ public sealed class UnitsTests
         var page = ui.Context.Render<Units>();
         page.WaitForAssertion(() => Assert.Single(page.FindAll("li.unit")));
         Assert.Single(page.FindAll("h1"));
+        Assert.Equal("60", page.Find("input.unit-name").GetAttribute("maxlength"));
         Assert.Contains("Unidade Sol", page.Markup);
 
         FillNewUnit(page);

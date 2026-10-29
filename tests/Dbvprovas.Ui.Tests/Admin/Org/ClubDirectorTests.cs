@@ -100,6 +100,7 @@ public sealed class ClubDirectorTests
         var page = ui.Context.Render<Clubs>();
         page.WaitForAssertion(() => Assert.Single(page.FindAll("li.club")));
         Assert.Single(page.FindAll("h1"));
+        Assert.Equal("60", page.Find("input.club-search").GetAttribute("maxlength"));
         Assert.Contains("Sem diretor", page.Markup);
         Assert.Equal(UiRoutes.AdminClubDirector(UiHarness.ClubId), page.Find("a.director-link").GetAttribute("href"));
 

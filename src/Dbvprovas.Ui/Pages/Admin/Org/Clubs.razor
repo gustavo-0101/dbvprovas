@@ -24,7 +24,7 @@
             <p role="alert">@Message</p>
         }
         <form class="club-search-form" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-            <label>Buscar clube <input class="club-search" @bind="query" maxlength="120" /></label>
+            <label>Buscar clube <input class="club-search" @bind="query" maxlength="60" /></label>
             <button type="submit" class="search">Buscar</button>
         </form>
         <ul class="clubs">
