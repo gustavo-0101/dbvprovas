@@ -110,6 +110,8 @@ public sealed class RoleAssignmentService(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await RowLocks.LockMembershipsAsync(db, [assignment.MembershipId], ct);
+        if (!await db.RoleAssignments.AnyAsync(r => r.Id == assignmentId && r.ClubId == context.ClubId && r.EndedAt == null, ct))
+            return Outcome.Conflict();
         var ended = await roles.EndAsync(assignment.MembershipId, role => role == assignment.Role, EndCause.RemovedByBoard, actor.PersonId, ct);
         if (ended == 0)
             return Outcome.Conflict();

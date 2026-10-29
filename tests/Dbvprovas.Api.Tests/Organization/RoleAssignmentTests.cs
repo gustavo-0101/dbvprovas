@@ -186,4 +186,29 @@ public sealed class RoleAssignmentTests(PostgresFixture db)
             """, ("t", created!.AssignmentId));
         Assert.Equal($"{a.Caio.PersonId}|RoleAssigned|RoleAssignment|{created.AssignmentId}|{a.ClubId}||", row);
     }
+
+    // CA-ORG-003: retirar pelo ID já encerrado não encerra a atribuição vigente do mesmo cargo.
+    [Fact]
+    public async Task CA_ORG_003_Ending_an_already_ended_assignment_does_not_end_the_current_one()
+    {
+        var club = await TestData.CreateClubAsync(db);
+        var director = await TestData.CreateMemberAsync(db, club, "Diretora", role: RoleCode.Director);
+        var unitX = await TestData.CreateUnitAsync(db, club, "Unidade X", Sex.Female);
+        var unitY = await TestData.CreateUnitAsync(db, club, "Unidade Y", Sex.Female);
+        var member = await TestData.CreateMemberAsync(db, club, "Conselheira");
+        await using var api = Api();
+        using var client = api.CreateClientAs(director);
+
+        var first = await (await client.PostAsJsonAsync(ApiRoutes.RoleAssignments(club), new AssignRoleRequest(member.MembershipId, RoleCode.Counselor, unitX)))
+            .Content.ReadFromJsonAsync<RoleAssignmentResponse>();
+        using var ended = await client.PostAsync(ApiRoutes.EndRoleAssignment(club, first!.AssignmentId), null);
+        var second = await (await client.PostAsJsonAsync(ApiRoutes.RoleAssignments(club), new AssignRoleRequest(member.MembershipId, RoleCode.Counselor, unitY)))
+            .Content.ReadFromJsonAsync<RoleAssignmentResponse>();
+        using var again = await client.PostAsync(ApiRoutes.EndRoleAssignment(club, first.AssignmentId), null);
+
+        Assert.Equal(HttpStatusCode.NoContent, ended.StatusCode);
+        await ProblemAssert.HasCodeAsync(again, HttpStatusCode.Conflict, ProblemCodes.StateConflict);
+        Assert.Equal(1, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM role_assignments WHERE id = @id AND ended_at IS NULL", ("id", second!.AssignmentId)));
+    }
 }
