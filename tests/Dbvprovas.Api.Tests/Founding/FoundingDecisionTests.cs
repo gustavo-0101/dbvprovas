@@ -237,9 +237,9 @@ public sealed class FoundingDecisionTests(PostgresFixture db)
         var requestId = await SendAsync(api, requester);
         using var adminClient = api.CreateClientAs(admin);
 
-        var first = await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>(ApiRoutes.AdminFoundingRequests);
-        await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>(ApiRoutes.AdminFoundingRequests);
-        var raw = await adminClient.GetStringAsync(ApiRoutes.AdminFoundingRequests);
+        var first = await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>($"{ApiRoutes.AdminFoundingRequests}?limit=100");
+        await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>($"{ApiRoutes.AdminFoundingRequests}?limit=100");
+        var raw = await adminClient.GetStringAsync($"{ApiRoutes.AdminFoundingRequests}?limit=100");
 
         var item = Assert.Single(first!, r => r.Id == requestId);
         Assert.Equal("Mínima", item.RequesterName);
@@ -265,5 +265,29 @@ public sealed class FoundingDecisionTests(PostgresFixture db)
         Assert.Equal(HttpStatusCode.InternalServerError, approved.StatusCode);
         Assert.Equal("Pending", await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString, "SELECT status FROM founding_requests WHERE id = @r", ("r", requestId)));
         Assert.Equal(0, await CountAsync("SELECT count(*) FROM clubs c JOIN founding_requests f ON f.proposed_club_id = c.id WHERE f.id = @r", ("r", requestId)));
+    }
+
+    // Lista que cresce: do mais antigo ao mais novo, ID como desempate, 1 a 100 por página (padrão 50).
+    [Fact]
+    public async Task CA_TEN_010_Pending_queue_is_stable_and_bounded()
+    {
+        var admin = await TestData.CreateAdminAsync(db);
+        await using var api = Api();
+        using var adminClient = api.CreateClientAs(admin);
+        for (var i = 0; i < 3; i++)
+            await SendAsync(api, await TestData.CreatePersonAsync(db, $"Fila {i}"));
+
+        var ordered = (await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
+            "SELECT coalesce(string_agg(id::text, ',' ORDER BY created_at, id), '') FROM founding_requests WHERE status = 'Pending'"))
+            .Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Guid.Parse).ToList();
+        var page = await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>($"{ApiRoutes.AdminFoundingRequests}?limit=2");
+        var defaults = await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>(ApiRoutes.AdminFoundingRequests);
+
+        Assert.Equal(ordered.Take(2), page!.Select(r => r.Id));
+        Assert.Equal(ordered.Take(50), defaults!.Select(r => r.Id));
+        await ProblemAssert.HasCodeAsync(await adminClient.GetAsync($"{ApiRoutes.AdminFoundingRequests}?limit=0"),
+            HttpStatusCode.BadRequest, ProblemCodes.ValidationText);
+        await ProblemAssert.HasCodeAsync(await adminClient.GetAsync($"{ApiRoutes.AdminFoundingRequests}?limit=101"),
+            HttpStatusCode.BadRequest, ProblemCodes.ValidationText);
     }
 }

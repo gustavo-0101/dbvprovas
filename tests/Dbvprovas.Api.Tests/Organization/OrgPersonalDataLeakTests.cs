@@ -22,7 +22,7 @@ public sealed class OrgPersonalDataLeakTests(PostgresFixture db)
             new CreateFoundingRequest(probe.ClubName, probe.City, null, false, ConsentTerms.AdultOwnParticipationVersion, true));
         Assert.True(sent.IsSuccessStatusCode);
         var request = await sent.Content.ReadFromJsonAsync<FoundingRequestResponse>();
-        var pending = await adminClient.GetStringAsync(ApiRoutes.AdminFoundingRequests);
+        var pending = await adminClient.GetStringAsync($"{ApiRoutes.AdminFoundingRequests}?limit=100");
         Assert.Contains(probe.Name, pending);
         using var approved = await adminClient.PostAsJsonAsync(ApiRoutes.ApproveFoundingRequest(request!.Id), new ApproveFoundingRequest(false, null));
         Assert.True(approved.IsSuccessStatusCode);

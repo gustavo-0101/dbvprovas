@@ -19,7 +19,7 @@ public sealed class RoleAssignmentService(
             from m in db.Memberships
             where m.ClubId == context.ClubId && m.Status != MembershipStatus.Ended
             join p in db.Persons on m.PersonId equals p.Id
-            orderby p.Name
+            orderby p.Name, m.Id
             select new { m.Id, p.Name, m.Status }).ToListAsync(ct);
         var ids = leaders.Select(l => l.Id).ToList();
         var assignments = await db.RoleAssignments.Where(r => ids.Contains(r.MembershipId) && r.EndedAt == null)

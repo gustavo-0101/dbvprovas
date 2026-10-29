@@ -12,7 +12,8 @@ public sealed class UnitService(AppDbContext db, ClubContext context, ActorServi
     {
         if (await AuthorizeAsync(ct) is { } denied)
             return denied;
-        var units = await db.Units.OrderBy(u => u.Name).Select(u => new UnitResponse(u.Id, u.Name, u.Sex, u.MinAge, u.MaxAge, u.Status)).ToListAsync(ct);
+        var units = await db.Units.OrderBy(u => u.Name).ThenBy(u => u.Id)
+            .Select(u => new UnitResponse(u.Id, u.Name, u.Sex, u.MinAge, u.MaxAge, u.Status)).ToListAsync(ct);
         return Outcome<List<UnitResponse>>.Ok(units);
     }
 

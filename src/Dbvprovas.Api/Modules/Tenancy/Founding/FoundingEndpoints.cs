@@ -20,7 +20,8 @@ public static class FoundingEndpoints
     public static void MapFoundingDecisions(this IEndpointRouteBuilder app)
     {
         var admin = app.MapGroup("/api/admin/founding-requests").RequireAuthorization(Policies.PlatformAdmin).WithTags("Founding");
-        admin.MapGet("", async (FoundingDecisionService service, CancellationToken ct) => TypedResults.Ok(await service.ListPendingAsync(ct)));
+        admin.MapGet("", async (int? limit, FoundingDecisionService service, CancellationToken ct) =>
+            (await service.ListPendingAsync(limit, ct)).ToHttp());
         admin.MapPost("/{requestId:guid}/approve", async (Guid requestId, ApproveFoundingRequest body, FoundingDecisionService service, CancellationToken ct) =>
             (await service.ApproveAsync(requestId, body, ct)).ToHttp());
         admin.MapPost("/{requestId:guid}/reject", async (Guid requestId, RejectFoundingRequest body, FoundingDecisionService service, CancellationToken ct) =>

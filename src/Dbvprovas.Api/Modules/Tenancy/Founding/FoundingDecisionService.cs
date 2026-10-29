@@ -22,27 +22,30 @@ public sealed class FoundingDecisionService(
         public Guid? MembershipClubId { get; init; }
     }
 
-    public async Task<List<AdminFoundingRequestResponse>> ListPendingAsync(CancellationToken ct)
+    public async Task<Outcome<List<AdminFoundingRequestResponse>>> ListPendingAsync(int? limit, CancellationToken ct)
     {
+        var take = limit ?? 50;
+        if (take is < 1 or > 100)
+            return Outcome.Invalid(ProblemCodes.ValidationText);
         var adminId = context.PersonId!.Value;
         var today = BrasiliaCalendar.Today(clock);
         var rows = await (
             from f in db.FoundingRequests
             where f.Status == FoundingRequestStatus.Pending
             join p in db.Persons on f.RequesterPersonId equals p.Id
-            orderby f.CreatedAt
+            orderby f.CreatedAt, f.Id
             select new
             {
                 Request = f, p.Name, p.BirthDate,
                 FoundedBefore = db.FoundingRecords.Any(r => r.PersonId == f.RequesterPersonId),
-            }).ToListAsync(ct);
+            }).Take(take).ToListAsync(ct);
         foreach (var row in rows)
             audit.Record(AuditAction.AdminPersonalDataRead, AuditTarget.Person, row.Request.RequesterPersonId, null, AuditScope.Platform, adminId,
                 fields: [AdminDataField.AdultProfile]);
         await db.SaveChangesAsync(ct);
-        return rows.Select(r => new AdminFoundingRequestResponse(r.Request.Id, r.Request.ClubName, r.Request.ClubCity, r.Request.ClubChurch,
+        return Outcome<List<AdminFoundingRequestResponse>>.Ok(rows.Select(r => new AdminFoundingRequestResponse(r.Request.Id, r.Request.ClubName, r.Request.ClubCity, r.Request.ClubChurch,
             r.Request.ExceptionRequested, r.Name ?? string.Empty, r.BirthDate is { } birth && AgeCalculator.AgeOn(birth, today) >= 18,
-            r.FoundedBefore, r.Request.CreatedAt)).ToList();
+            r.FoundedBefore, r.Request.CreatedAt)).ToList());
     }
 
     public async Task<Outcome<FoundingApprovedResponse>> ApproveAsync(Guid requestId, ApproveFoundingRequest body, CancellationToken ct)
