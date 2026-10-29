@@ -61,22 +61,28 @@ public sealed class FoundingDecisionService(
             return Outcome.Conflict();
 
         // Condições revalidadas na decisão (RN-TEN-003): 18+, cadastro completo, não diretor, fundação anterior × exceção.
-        var person = await db.Persons.Where(p => p.Id == request.RequesterPersonId).Select(p => new { p.Name, p.BirthDate, p.Sex }).SingleAsync(ct);
+        // O admin só vê o solicitante enquanto o pedido está pendente; sem ele, outra decisão já venceu (D-140).
+        var person = await db.Persons.Where(p => p.Id == request.RequesterPersonId).Select(p => new { p.Name, p.BirthDate, p.Sex }).SingleOrDefaultAsync(ct);
+        if (person is null)
+            return Outcome.Conflict();
         if (person.Name is null || person.BirthDate is not { } birth || person.Sex is null)
             return Outcome.Forbidden(ProblemCodes.ProfileIncomplete);
         if (AgeCalculator.AgeOn(birth, BrasiliaCalendar.Today(clock)) < 18)
             return Outcome.Forbidden(ProblemCodes.AgeBelowMinimum);
         var foundedBefore = await db.FoundingRecords.AnyAsync(r => r.PersonId == request.RequesterPersonId, ct);
+        var states = await db.Database.SqlQuery<RequesterState>(
+                $"SELECT director_club_id AS \"DirectorClubId\", membership_id AS \"MembershipId\", membership_club_id AS \"MembershipClubId\" FROM founding_requester_state({requestId})")
+            .ToListAsync(ct);
+        var consent = await db.Consents.SingleOrDefaultAsync(c => c.FoundingRequestId == requestId && c.RevokedAt == null && c.EndedAt == null, ct);
+        // Uma decisão que venceu depois da primeira leitura muda a fundação anterior e o consentimento: quem perdeu recebe 409 (D-140).
+        if (!await db.FoundingRequests.AnyAsync(f => f.Id == requestId && f.Status == FoundingRequestStatus.Pending, ct))
+            return Outcome.Conflict();
         if (foundedBefore && !body.GrantException)
             return Outcome.Forbidden(ProblemCodes.FoundingExceptionRequired);
         if (!foundedBefore && body.GrantException)
             return Outcome.Invalid(ProblemCodes.FoundingExceptionNotApplicable);
-        var states = await db.Database.SqlQuery<RequesterState>(
-                $"SELECT director_club_id AS \"DirectorClubId\", membership_id AS \"MembershipId\", membership_club_id AS \"MembershipClubId\" FROM founding_requester_state({requestId})")
-            .ToListAsync(ct);
         if (states.Any(s => s.DirectorClubId is not null))
             return Outcome.Forbidden(ProblemCodes.FoundingIsDirector);
-        var consent = await db.Consents.SingleOrDefaultAsync(c => c.FoundingRequestId == requestId && c.RevokedAt == null && c.EndedAt == null, ct);
         if (consent is null)
             return Outcome.Forbidden(ProblemCodes.ConsentRequired);
         // A aprovação grava o clube no consentimento: trava exclusiva, sem upgrade de SHARE (D-140).
