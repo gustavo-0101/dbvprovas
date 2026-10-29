@@ -1,0 +1,142 @@
+@page "/admin/clubs/{ClubId:guid}/director"
+@inherits ClubPageBase
+@inject OrganizationApi Orgs
+
+<PageTitle>Diretor do clube</PageTitle>
+
+<h1>Diretor do clube</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case PageState.Forbidden:
+        <p role="alert">Esta área é só do admin da plataforma.</p>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        @if (club is null)
+        {
+            <p role="alert">Não encontrado.</p>
+        }
+        else if (!club.HasDirector)
+        {
+            <p class="club-name">@club.Name — @club.City</p>
+            <ul class="candidates">
+                @foreach (var candidate in candidates)
+                {
+                    <li class="candidate">
+                        @candidate.Name — @(candidate.IsAdult ? "Maior de idade" : "Menor de idade")
+                        <button class="appoint" @onclick="() => AppointAsync(candidate.MembershipId)">Nomear</button>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="club-name">@club.Name — @club.City</p>
+            <label>
+                Candidato
+                <select class="candidate" @bind="candidateId">
+                    <option value="">Escolha…</option>
+                    @foreach (var candidate in candidates)
+                    {
+                        <option value="@candidate.MembershipId">@candidate.Name — @(candidate.IsAdult ? "Maior de idade" : "Menor de idade")</option>
+                    }
+                </select>
+            </label>
+            <label>
+                Motivo da substituição
+                <select class="replace-reason" @bind="reason">
+                    <option value="">Escolha…</option>
+                    @foreach (var option in ReasonCodes.AllowedFor(ReasonOperation.ReplaceDirector))
+                    {
+                        <option value="@option">@Labels.Of(option)</option>
+                    }
+                </select>
+            </label>
+            <button class="replace" disabled="@(candidateId is null || reason is null)" @onclick="ReplaceAsync">Substituir</button>
+        }
+        break;
+}
+
+@code {
+    [Parameter]
+    public Guid ClubId { get; set; }
+
+    private AdminClubResponse? club;
+    private List<DirectorCandidateResponse> candidates = [];
+    private Guid? candidateId;
+    private ReasonCode? reason;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        if (!Me!.IsPlatformAdmin)
+        {
+            State = PageState.Forbidden;
+            return;
+        }
+
+        var clubs = await Orgs.ListAdminClubsAsync(null);
+        if (!clubs.IsOk)
+        {
+            State = clubs.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(clubs.Error, clubs.ProblemCode, Module);
+            return;
+        }
+
+        club = clubs.Value!.FirstOrDefault(c => c.Id == ClubId);
+        candidates = [];
+        if (club is not null)
+        {
+            var list = await Orgs.DirectorCandidatesAsync(ClubId);
+            if (!list.IsOk)
+            {
+                State = list.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+                await SucceededAsync(list.Error, list.ProblemCode, Module);
+                return;
+            }
+
+            candidates = list.Value!;
+        }
+
+        candidateId = null;
+        reason = null;
+        State = PageState.Ready;
+    }
+
+    private async Task AppointAsync(Guid membershipId)
+    {
+        var result = await Orgs.AppointDirectorAsync(ClubId, membershipId);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private async Task ReplaceAsync()
+    {
+        var result = await Orgs.ReplaceDirectorAsync(ClubId, candidateId!.Value, reason!.Value);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private static string? Module(string? code) => code switch
+    {
+        ProblemCodes.DirectorExists => "O clube já tem diretor. Use a substituição.",
+        ProblemCodes.DirectorMissing => "O clube não tem diretor. Use a nomeação.",
+        ProblemCodes.DirectorTargetIneligible => "Escolha outro líder ativo com 18 anos ou mais.",
+        _ => null,
+    };
+}
