@@ -195,4 +195,38 @@ public sealed class FoundingRequestTests(PostgresFixture db)
         Assert.Equal("Clube Aparado", ok!.ClubName);
         Assert.Null(ok.Church);
     }
+
+    // D-140: cancelar e decidir ao mesmo tempo travam na mesma ordem; cada resposta é sucesso ou 409, nunca 500.
+    [Fact]
+    public async Task CA_TEN_009_Concurrent_cancel_and_decision_returns_success_or_conflict()
+    {
+        var admin = await TestData.CreateAdminAsync(db);
+        await using var api = Api();
+        using var adminClient = api.CreateClientAs(admin);
+
+        for (var round = 0; round < 6; round++)
+        {
+            var toApprove = await TestData.CreatePersonAsync(db, $"Cancela Aprova {round}");
+            using var approveClient = api.CreateClientAs(toApprove);
+            var approveId = (await (await approveClient.PostAsJsonAsync(ApiRoutes.FoundingRequests, Body())).Content
+                .ReadFromJsonAsync<FoundingRequestResponse>())!.Id;
+            var againstApprove = await Task.WhenAll(
+                approveClient.PostAsync(ApiRoutes.CancelMyFoundingRequest(approveId), null),
+                adminClient.PostAsJsonAsync(ApiRoutes.ApproveFoundingRequest(approveId), new ApproveFoundingRequest(false, null)));
+            Assert.All(againstApprove, r => Assert.True(r.IsSuccessStatusCode || r.StatusCode == HttpStatusCode.Conflict, r.StatusCode.ToString()));
+            foreach (var response in againstApprove)
+                response.Dispose();
+
+            var toReject = await TestData.CreatePersonAsync(db, $"Cancela Recusa {round}");
+            using var rejectClient = api.CreateClientAs(toReject);
+            var rejectId = (await (await rejectClient.PostAsJsonAsync(ApiRoutes.FoundingRequests, Body())).Content
+                .ReadFromJsonAsync<FoundingRequestResponse>())!.Id;
+            var againstReject = await Task.WhenAll(
+                rejectClient.PostAsync(ApiRoutes.CancelMyFoundingRequest(rejectId), null),
+                adminClient.PostAsJsonAsync(ApiRoutes.RejectFoundingRequest(rejectId), new RejectFoundingRequest(ReasonCode.DuplicateRequest)));
+            Assert.All(againstReject, r => Assert.True(r.IsSuccessStatusCode || r.StatusCode == HttpStatusCode.Conflict, r.StatusCode.ToString()));
+            foreach (var response in againstReject)
+                response.Dispose();
+        }
+    }
 }

@@ -88,6 +88,10 @@ public sealed class FoundingRequestService(AppDbContext db, ClubContext context,
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (!await db.FoundingRequests.AnyAsync(f => f.Id == requestId && f.RequesterPersonId == personId, ct))
             return Outcome.NotFound;
+        // Trava o consentimento antes do pedido, na mesma ordem da decisão (D-140).
+        var consent = await db.Consents.SingleOrDefaultAsync(c => c.FoundingRequestId == requestId && c.RevokedAt == null && c.EndedAt == null, ct);
+        if (consent is not null)
+            await RowLocks.LockConsentAsync(db, consent.Id, exclusive: true, ct);
         var won = await db.FoundingRequests
             .Where(f => f.Id == requestId && f.RequesterPersonId == personId && f.Status == FoundingRequestStatus.Pending)
             .ExecuteUpdateAsync(s => s.SetProperty(f => f.Status, FoundingRequestStatus.Cancelled).SetProperty(f => f.ClosedAt, now), ct);
