@@ -8,12 +8,14 @@ public static class OrganizationModule
         services.AddScoped<UnitService>();
         services.AddScoped<RoleAssignmentService>();
         services.AddScoped<DirectorNominationService>();
+        services.AddScoped<AdminDirectorService>();
         return services;
     }
 
     public static WebApplication MapOrganizationModule(this WebApplication app)
     {
         app.MapClubOrganization();
+        app.MapAdminDirector();
         return app;
     }
 }

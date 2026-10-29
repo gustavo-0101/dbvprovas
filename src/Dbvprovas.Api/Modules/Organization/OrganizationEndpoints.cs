@@ -31,4 +31,16 @@ public static class OrganizationEndpoints
             (await service.DeclineAsync(nominationId, ct)).ToHttp());
         return club;
     }
+
+    public static void MapAdminDirector(this IEndpointRouteBuilder app)
+    {
+        var admin = app.MapGroup("/api/admin/clubs").RequireAuthorization(Policies.PlatformAdmin).WithTags("Organization");
+        admin.MapGet("", async (string? query, AdminDirectorService service, CancellationToken ct) => (await service.ListClubsAsync(query, ct)).ToHttp());
+        admin.MapGet("/{clubId:guid}/director-candidates", async (Guid clubId, AdminDirectorService service, CancellationToken ct) =>
+            (await service.CandidatesAsync(clubId, ct)).ToHttp());
+        admin.MapPost("/{clubId:guid}/director", async (Guid clubId, AppointDirectorRequest body, AdminDirectorService service, CancellationToken ct) =>
+            (await service.AppointAsync(clubId, body, ct)).ToHttp());
+        admin.MapPost("/{clubId:guid}/director/replace", async (Guid clubId, ReplaceDirectorRequest body, AdminDirectorService service, CancellationToken ct) =>
+            (await service.ReplaceAsync(clubId, body, ct)).ToHttp());
+    }
 }
