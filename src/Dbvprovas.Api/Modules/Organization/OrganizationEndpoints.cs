@@ -29,6 +29,12 @@ public static class OrganizationEndpoints
             (await service.AcceptAsync(nominationId, ct)).ToHttp());
         club.MapPost("/director-nominations/{nominationId:guid}/decline", async (Guid nominationId, DirectorNominationService service, CancellationToken ct) =>
             (await service.DeclineAsync(nominationId, ct)).ToHttp());
+        club.MapPost("/members/{membershipId:guid}/suspend", async (Guid membershipId, MemberStatusRequest body, MembershipStatusService service, CancellationToken ct) =>
+            (await service.SuspendAsync(membershipId, body, ct)).ToHttp());
+        club.MapPost("/members/{membershipId:guid}/remove", async (Guid membershipId, MemberStatusRequest body, MembershipStatusService service, CancellationToken ct) =>
+            (await service.RemoveAsync(membershipId, body, ct)).ToHttp());
+        club.MapPost("/members/{membershipId:guid}/reactivate", async (Guid membershipId, MemberStatusRequest body, MembershipStatusService service, CancellationToken ct) =>
+            (await service.ReactivateAsync(membershipId, body, ct)).ToHttp());
         return club;
     }
 

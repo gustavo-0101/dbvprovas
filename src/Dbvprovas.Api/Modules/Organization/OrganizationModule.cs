@@ -9,6 +9,7 @@ public static class OrganizationModule
         services.AddScoped<RoleAssignmentService>();
         services.AddScoped<DirectorNominationService>();
         services.AddScoped<AdminDirectorService>();
+        services.AddScoped<MembershipStatusService>();
         return services;
     }
 
