@@ -90,7 +90,8 @@ public sealed class DirectorNominationTests(PostgresFixture db)
         Assert.Equal(1, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
             "SELECT count(*) FROM role_assignments WHERE club_id = @c AND role = 'Director' AND ended_at IS NULL", ("c", a.ClubId)));
         Assert.Equal(1, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
-            "SELECT count(*) FROM notifications WHERE recipient_person_id = @p AND event = 'DirectorChanged'", ("p", admin.PersonId)));
+            "SELECT count(*) FROM notifications WHERE recipient_person_id = @p AND event = 'DirectorChanged' AND club_id = @c",
+            ("p", admin.PersonId), ("c", a.ClubId)));
     }
 
     // CA-ORG-005 a: recusar mantém a direção.
