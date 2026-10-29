@@ -67,6 +67,25 @@ public sealed class ClubDirectorTests
         });
     }
 
+    // CA-ORG-006: o botão de nomear fica escondido para quem não é adulto.
+    [Fact]
+    public void CA_ORG_006_Appoint_is_hidden_for_non_adult_candidate()
+    {
+        using var ui = new UiHarness();
+        OrgUi.ServeMe(ui, admin: true);
+        ui.Api.Respond(HttpMethod.Get, ApiRoutes.AdminClub(UiHarness.ClubId), HttpStatusCode.OK,
+            new AdminClubResponse(UiHarness.ClubId, "Clube Águias", "Cidade Nova", false));
+        ui.Api.Respond(HttpMethod.Get, ApiRoutes.AdminDirectorCandidates(UiHarness.ClubId), HttpStatusCode.OK, new[]
+        {
+            new DirectorCandidateResponse(CandidateMembership, "Pessoa Candidata", true),
+            new DirectorCandidateResponse(Guid.Parse("00000000-0000-7000-8000-0000000000b2"), "Pessoa Menor", false),
+        });
+
+        var page = ui.Context.Render<ClubDirector>(p => p.Add(c => c.ClubId, UiHarness.ClubId));
+        page.WaitForAssertion(() => Assert.Equal(2, page.FindAll("li.candidate").Count));
+        Assert.Single(page.FindAll("button.appoint"));
+    }
+
     // A lista de clubes do admin busca pelo texto, na query, e aponta cada clube para a tela da direção.
     [Fact]
     public void Admin_clubs_page_searches_and_links_to_director()

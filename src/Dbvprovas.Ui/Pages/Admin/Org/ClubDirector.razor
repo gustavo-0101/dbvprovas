@@ -35,7 +35,10 @@
                 {
                     <li class="candidate">
                         @candidate.Name — @(candidate.IsAdult ? "Maior de idade" : "Menor de idade")
-                        <button class="appoint" @onclick="() => AppointAsync(candidate.MembershipId)">Nomear</button>
+                        @if (candidate.IsAdult)
+                        {
+                            <button class="appoint" @onclick="() => AppointAsync(candidate.MembershipId)">Nomear</button>
+                        }
                     </li>
                 }
             </ul>

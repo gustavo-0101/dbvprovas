@@ -42,19 +42,20 @@ public sealed class AdminDirectorService(
         if (!await db.AdminClubOverview.AnyAsync(c => c.Id == clubId, ct))
             return Outcome.NotFound;
         await scope.EnterAsync(clubId, ct);
-        var today = BrasiliaCalendar.Today(clock);
+        // D-210, RN-AUD-006: só ativos com 18+ na data de Brasília e nascimento conhecido; a auditoria segue a lista.
+        var adultOnOrBefore = BrasiliaCalendar.Today(clock).AddYears(-18);
         var rows = await (
             from m in db.Memberships
             where m.ClubId == clubId && m.Status == MembershipStatus.Active
             join p in db.Persons on m.PersonId equals p.Id
+            where p.BirthDate != null && p.BirthDate <= adultOnOrBefore
             orderby p.Name
-            select new { m.Id, m.PersonId, p.Name, p.BirthDate }).ToListAsync(ct);
+            select new { m.Id, m.PersonId, p.Name }).ToListAsync(ct);
         foreach (var row in rows)
             audit.Record(AuditAction.AdminPersonalDataRead, AuditTarget.Person, row.PersonId, clubId, AuditScope.Platform, context.PersonId,
                 fields: [AdminDataField.AdultProfile]);
         await db.SaveChangesAsync(ct);
-        return Outcome<List<DirectorCandidateResponse>>.Ok(rows.Select(r => new DirectorCandidateResponse(r.Id, r.Name ?? string.Empty,
-            r.BirthDate is { } birth && AgeCalculator.AgeOn(birth, today) >= 18)).ToList());
+        return Outcome<List<DirectorCandidateResponse>>.Ok(rows.Select(r => new DirectorCandidateResponse(r.Id, r.Name ?? string.Empty, true)).ToList());
     }
 
     public Task<Outcome> AppointAsync(Guid clubId, AppointDirectorRequest body, CancellationToken ct) =>

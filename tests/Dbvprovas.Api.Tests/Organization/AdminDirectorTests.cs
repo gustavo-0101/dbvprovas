@@ -145,4 +145,27 @@ public sealed class AdminDirectorTests(PostgresFixture db)
         Assert.Equal(2, tied.Count);
         Assert.Equal(tied.OrderBy(c => c.Id).Select(c => c.Id), tied.Select(c => c.Id));
     }
+
+    // D-210, RN-AUD-006: o admin vê só membros ativos com 18+ e nascimento conhecido; só os listados geram auditoria.
+    [Fact]
+    public async Task CA_AUD_008_Admin_director_candidates_are_adults_with_known_birth_and_each_is_audited()
+    {
+        var club = await TestData.CreateClubAsync(db);
+        var adult = await TestData.CreateMemberAsync(db, club, "Adulta", age: 30);
+        await TestData.CreateMemberAsync(db, club, "Menor", age: 17);
+        await TestData.CreateMemberAsync(db, club, "Sem Nascimento", age: null);
+        var admin = await TestData.CreateAdminAsync(db);
+        await using var api = Api();
+
+        var candidates = await api.CreateClientAs(admin).GetFromJsonAsync<List<DirectorCandidateResponse>>(ApiRoutes.AdminDirectorCandidates(club));
+
+        var listed = Assert.Single(candidates!);
+        Assert.Equal(adult.MembershipId, listed.MembershipId);
+        Assert.True(listed.IsAdult);
+        Assert.Equal(1, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM audit_entries WHERE club_id = @c AND action = 'AdminPersonalDataRead' AND target_id = @p",
+            ("c", club), ("p", adult.PersonId)));
+        Assert.Equal(1, await OwnerSql.ScalarAsync<long>(db.OwnerConnectionString,
+            "SELECT count(*) FROM audit_entries WHERE club_id = @c AND action = 'AdminPersonalDataRead'", ("c", club)));
+    }
 }
