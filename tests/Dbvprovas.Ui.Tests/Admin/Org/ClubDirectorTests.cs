@@ -12,10 +12,8 @@ public sealed class ClubDirectorTests
     private static void Serve(UiHarness ui, bool hasDirector)
     {
         OrgUi.ServeMe(ui, admin: true);
-        ui.Api.Respond(HttpMethod.Get, ApiRoutes.AdminClubs, HttpStatusCode.OK, new[]
-        {
-            new AdminClubResponse(UiHarness.ClubId, "Clube Águias", "Cidade Nova", hasDirector),
-        });
+        ui.Api.Respond(HttpMethod.Get, ApiRoutes.AdminClub(UiHarness.ClubId), HttpStatusCode.OK,
+            new AdminClubResponse(UiHarness.ClubId, "Clube Águias", "Cidade Nova", hasDirector));
         ui.Api.Respond(HttpMethod.Get, ApiRoutes.AdminDirectorCandidates(UiHarness.ClubId), HttpStatusCode.OK, new[]
         {
             new DirectorCandidateResponse(CandidateMembership, "Pessoa Candidata", true),

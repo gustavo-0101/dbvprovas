@@ -90,15 +90,23 @@
             return;
         }
 
-        var clubs = await Orgs.ListAdminClubsAsync(null);
-        if (!clubs.IsOk)
+        var loaded = await Orgs.GetAdminClubAsync(ClubId);
+        if (!loaded.IsOk)
         {
-            State = clubs.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
-            await SucceededAsync(clubs.Error, clubs.ProblemCode, Module);
+            club = null;
+            candidates = [];
+            if (loaded.Error == ApiError.NotFound)
+            {
+                State = PageState.Ready;
+                return;
+            }
+
+            State = loaded.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(loaded.Error, loaded.ProblemCode, Module);
             return;
         }
 
-        club = clubs.Value!.FirstOrDefault(c => c.Id == ClubId);
+        club = loaded.Value;
         candidates = [];
         if (club is not null)
         {

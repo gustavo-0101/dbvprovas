@@ -30,6 +30,8 @@ public static partial class ApiRoutes
 
     public static string ReactivateMember(Guid clubId, Guid membershipId) => $"api/clubs/{clubId}/members/{membershipId}/reactivate";
 
+    public static string AdminClub(Guid clubId) => $"api/admin/clubs/{clubId}";
+
     public static string AdminDirectorCandidates(Guid clubId) => $"api/admin/clubs/{clubId}/director-candidates";
 
     public static string AdminAppointDirector(Guid clubId) => $"api/admin/clubs/{clubId}/director";

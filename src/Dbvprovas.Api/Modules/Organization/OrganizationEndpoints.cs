@@ -42,6 +42,8 @@ public static class OrganizationEndpoints
     {
         var admin = app.MapGroup("/api/admin/clubs").RequireAuthorization(Policies.PlatformAdmin).WithTags("Organization");
         admin.MapGet("", async (string? query, AdminDirectorService service, CancellationToken ct) => (await service.ListClubsAsync(query, ct)).ToHttp());
+        admin.MapGet("/{clubId:guid}", async (Guid clubId, AdminDirectorService service, CancellationToken ct) =>
+            (await service.GetClubAsync(clubId, ct)).ToHttp());
         admin.MapGet("/{clubId:guid}/director-candidates", async (Guid clubId, AdminDirectorService service, CancellationToken ct) =>
             (await service.CandidatesAsync(clubId, ct)).ToHttp());
         admin.MapPost("/{clubId:guid}/director", async (Guid clubId, AppointDirectorRequest body, AdminDirectorService service, CancellationToken ct) =>

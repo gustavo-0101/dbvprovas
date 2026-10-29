@@ -24,12 +24,13 @@ public sealed class AdminDirectorTests(PostgresFixture db)
         await using var api = Api();
         using var client = api.CreateClientAs(admin);
 
-        var clubs = await client.GetFromJsonAsync<List<AdminClubResponse>>(ApiRoutes.AdminClubs + "?query=Águias");
+        var club = await client.GetFromJsonAsync<AdminClubResponse>(ApiRoutes.AdminClub(a.ClubId));
         var candidates = await client.GetFromJsonAsync<List<DirectorCandidateResponse>>(ApiRoutes.AdminDirectorCandidates(a.ClubId));
         using var appointed = await client.PostAsJsonAsync(ApiRoutes.AdminAppointDirector(a.ClubId), new AppointDirectorRequest(a.Caio.MembershipId));
         var raw = await client.GetStringAsync(ApiRoutes.AdminDirectorCandidates(a.ClubId));
 
-        Assert.Contains(clubs!, c => c.Id == a.ClubId && !c.HasDirector);
+        Assert.False(club!.HasDirector);
+        Assert.Equal(a.ClubId, club.Id);
         Assert.Contains(candidates!, c => c.MembershipId == a.Caio.MembershipId && c.IsAdult);
         Assert.DoesNotContain("birthDate", raw);
         Assert.Equal(HttpStatusCode.NoContent, appointed.StatusCode);
@@ -106,5 +107,42 @@ public sealed class AdminDirectorTests(PostgresFixture db)
             "SELECT count(*) FROM role_assignments WHERE club_id = @c AND role = 'Director' AND ended_at IS NULL", ("c", a.ClubId)));
         foreach (var result in results)
             result.Dispose();
+    }
+
+    // D-150: a rota por ID devolve o clube ao admin, 404 se não existe, e é negada a quem não é admin.
+    [Fact]
+    public async Task CA_ORG_006_Admin_club_by_id_is_found_or_not_found_and_denied_to_non_admin()
+    {
+        var a = await TestData.CreateClubAAsync(db);
+        var admin = await TestData.CreateAdminAsync(db);
+        await using var api = Api();
+
+        var club = await api.CreateClientAs(admin).GetFromJsonAsync<AdminClubResponse>(ApiRoutes.AdminClub(a.ClubId));
+        using var missing = await api.CreateClientAs(admin).GetAsync(ApiRoutes.AdminClub(Guid.CreateVersion7()));
+        using var denied = await api.CreateClientAs(a.Aurora).GetAsync(ApiRoutes.AdminClub(a.ClubId));
+
+        Assert.Equal(a.ClubId, club!.Id);
+        Assert.Equal("Clube Águias", club.Name);
+        Assert.True(club.HasDirector);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    // D-150: nomes iguais na busca desempatam pelo ID.
+    [Fact]
+    public async Task CA_ORG_006_Admin_club_search_breaks_ties_by_id()
+    {
+        const string name = "Clube Empate";
+        await TestData.CreateClubAsync(db, name);
+        await TestData.CreateClubAsync(db, name);
+        var admin = await TestData.CreateAdminAsync(db);
+        await using var api = Api();
+
+        var clubs = await api.CreateClientAs(admin)
+            .GetFromJsonAsync<List<AdminClubResponse>>($"{ApiRoutes.AdminClubs}?query={Uri.EscapeDataString(name)}");
+        var tied = clubs!.Where(c => c.Name == name).ToList();
+
+        Assert.Equal(2, tied.Count);
+        Assert.Equal(tied.OrderBy(c => c.Id).Select(c => c.Id), tied.Select(c => c.Id));
     }
 }

@@ -25,8 +25,16 @@ public sealed class AdminDirectorService(
             clubs = clubs.Where(c => EF.Functions.ILike(c.Name, pattern, "\\") || EF.Functions.ILike(c.City, pattern, "\\"));
         }
 
-        var list = await clubs.OrderBy(c => c.Name).Take(50).Select(c => new AdminClubResponse(c.Id, c.Name, c.City, c.HasDirector)).ToListAsync(ct);
+        var list = await clubs.OrderBy(c => c.Name).ThenBy(c => c.Id).Take(50)
+            .Select(c => new AdminClubResponse(c.Id, c.Name, c.City, c.HasDirector)).ToListAsync(ct);
         return Outcome<List<AdminClubResponse>>.Ok(list);
+    }
+
+    public async Task<Outcome<AdminClubResponse>> GetClubAsync(Guid clubId, CancellationToken ct)
+    {
+        var club = await db.AdminClubOverview.Where(c => c.Id == clubId)
+            .Select(c => new AdminClubResponse(c.Id, c.Name, c.City, c.HasDirector)).SingleOrDefaultAsync(ct);
+        return club is null ? Outcome.NotFound : Outcome<AdminClubResponse>.Ok(club);
     }
 
     public async Task<Outcome<List<DirectorCandidateResponse>>> CandidatesAsync(Guid clubId, CancellationToken ct)

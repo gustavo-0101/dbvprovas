@@ -45,6 +45,9 @@ public sealed class OrganizationApi(ApiClient api)
     public Task<ApiResult<List<AdminClubResponse>>> ListAdminClubsAsync(string? query) =>
         Api.SendAsync<List<AdminClubResponse>>(HttpMethod.Get, string.IsNullOrWhiteSpace(query) ? ApiRoutes.AdminClubs : $"{ApiRoutes.AdminClubs}?query={Uri.EscapeDataString(query)}");
 
+    public Task<ApiResult<AdminClubResponse>> GetAdminClubAsync(Guid clubId) =>
+        Api.SendAsync<AdminClubResponse>(HttpMethod.Get, ApiRoutes.AdminClub(clubId));
+
     public Task<ApiResult<List<DirectorCandidateResponse>>> DirectorCandidatesAsync(Guid clubId) =>
         Api.SendAsync<List<DirectorCandidateResponse>>(HttpMethod.Get, ApiRoutes.AdminDirectorCandidates(clubId));
 
