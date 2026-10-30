@@ -1,0 +1,147 @@
+@page "/club/units"
+@inherits ClubPageBase
+@inject OrganizationApi Orgs
+
+<PageTitle>Unidades</PageTitle>
+
+<h1>Unidades</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case PageState.NoClub:
+        <p>Você ainda não participa de nenhum clube.</p>
+        break;
+    case PageState.Forbidden:
+        <p>Só a diretoria e a secretaria editam os dados do clube.</p>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        <ul class="units">
+            @foreach (var unit in units)
+            {
+                <li class="unit">
+                    @unit.Name — @Labels.Of(unit.Sex) — @unit.MinAge a @unit.MaxAge anos — @Labels.Of(unit.Status)
+                    @if (IsDirectorOrSecretary)
+                    {
+                        <button class="edit" @onclick="() => Edit(unit)">Editar</button>
+                    }
+                </li>
+            }
+        </ul>
+        @if (IsDirectorOrSecretary)
+        {
+            <form class="unit-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <h2>@(editingId is null ? "Nova unidade" : "Editar unidade")</h2>
+                <label>Nome <input class="unit-name" @bind="name" maxlength="60" /></label>
+                <label>
+                    Sexo
+                    <select class="unit-sex" @bind="sex">
+                        <option value="@Sex.Female">@Labels.Of(Sex.Female)</option>
+                        <option value="@Sex.Male">@Labels.Of(Sex.Male)</option>
+                    </select>
+                </label>
+                <label>Idade mínima <input class="unit-min" type="number" min="10" max="15" @bind="minAge" /></label>
+                <label>Idade máxima <input class="unit-max" type="number" min="10" max="15" @bind="maxAge" /></label>
+                <label>
+                    Situação
+                    <select class="unit-status" @bind="status">
+                        <option value="@UnitStatus.Active">@Labels.Of(UnitStatus.Active)</option>
+                        <option value="@UnitStatus.Inactive">@Labels.Of(UnitStatus.Inactive)</option>
+                    </select>
+                </label>
+                <button type="submit" class="save">Salvar</button>
+            </form>
+        }
+        break;
+}
+
+@code {
+    private List<UnitResponse> units = [];
+    private Guid? editingId;
+    private string name = string.Empty;
+    private Sex sex = Sex.Female;
+    private int minAge = 10;
+    private int maxAge = 15;
+    private UnitStatus status = UnitStatus.Active;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        if (Club is null)
+        {
+            State = PageState.NoClub;
+            return;
+        }
+
+        if (!IsDirectorOrSecretary)
+        {
+            State = PageState.Forbidden;
+            return;
+        }
+
+        var list = await Orgs.ListUnitsAsync(Club.Id);
+        if (!list.IsOk)
+        {
+            State = list.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(list.Error, list.ProblemCode, Module);
+            return;
+        }
+
+        units = list.Value!;
+        State = PageState.Ready;
+    }
+
+    private void Edit(UnitResponse unit)
+    {
+        editingId = unit.Id;
+        name = unit.Name;
+        sex = unit.Sex;
+        minAge = unit.MinAge;
+        maxAge = unit.MaxAge;
+        status = unit.Status;
+    }
+
+    private void ResetForm()
+    {
+        editingId = null;
+        name = string.Empty;
+        sex = Sex.Female;
+        minAge = 10;
+        maxAge = 15;
+        status = UnitStatus.Active;
+    }
+
+    private async Task SaveAsync()
+    {
+        var body = new UnitRequest(name, sex, minAge, maxAge, status);
+        var result = editingId is { } id
+            ? await Orgs.UpdateUnitAsync(Club!.Id, id, body)
+            : await Orgs.CreateUnitAsync(Club!.Id, body);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+        {
+            ResetForm();
+            await LoadAsync();
+        }
+    }
+
+    private static string? Module(string? code) => code switch
+    {
+        ProblemCodes.UnitInvalidRange => "A faixa vai de 10 a 15 anos, com a mínima menor ou igual à máxima.",
+        ProblemCodes.UnitSexConflict => "Há conselheiro de outro sexo nesta unidade. Retire a atribuição antes de mudar o sexo.",
+        _ => null,
+    };
+}

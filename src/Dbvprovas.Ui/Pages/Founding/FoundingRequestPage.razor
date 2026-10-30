@@ -1,0 +1,107 @@
+@page "/founding"
+@inherits ClubPageBase
+@inject FoundingApi Founding
+
+<PageTitle>Pedir fundação</PageTitle>
+
+<h1>Pedir fundação de clube</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        @if (requests.Any(r => r.Status == FoundingRequestStatus.Pending))
+        {
+            <p>Você tem um pedido pendente. Aguarde a decisão ou cancele.</p>
+        }
+        else
+        {
+            <form class="founding-form" @onsubmit="SendAsync" @onsubmit:preventDefault>
+                <label>Nome do clube <input class="club-name" @bind="clubName" maxlength="120" /></label>
+                <label>Cidade <input class="club-city" @bind="city" maxlength="120" /></label>
+                <label>Igreja (opcional) <input class="club-church" @bind="church" maxlength="120" /></label>
+                <label><input type="checkbox" class="request-exception" @bind="requestException" /> Já fundei um clube e peço exceção</label>
+                <ConsentTerm ClubName="@(string.IsNullOrWhiteSpace(clubName) ? "novo clube" : clubName)" @bind-Accepted="consent" />
+                <button type="submit" class="send" disabled="@(!consent)">Enviar pedido</button>
+            </form>
+        }
+        <h2>Meus pedidos</h2>
+        @if (requests.Count == 0)
+        {
+            <p>Nenhum pedido ainda.</p>
+        }
+        <ul class="my-requests">
+            @foreach (var request in requests)
+            {
+                <li>
+                    @request.ClubName — @Labels.Of(request.Status)
+                    @if (request.Status == FoundingRequestStatus.Pending)
+                    {
+                        <button class="cancel" @onclick="() => CancelAsync(request.Id)">Cancelar</button>
+                    }
+                </li>
+            }
+        </ul>
+        break;
+}
+
+@code {
+    private List<FoundingRequestResponse> requests = [];
+    private string clubName = string.Empty;
+    private string city = string.Empty;
+    private string? church;
+    private bool requestException;
+    private bool consent;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        var mine = await Founding.ListMineAsync();
+        if (!mine.IsOk)
+        {
+            State = mine.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(mine.Error, mine.ProblemCode, Module);
+            return;
+        }
+
+        requests = mine.Value!;
+        State = PageState.Ready;
+    }
+
+    private async Task SendAsync()
+    {
+        var result = await Founding.CreateAsync(new CreateFoundingRequest(clubName, city, church, requestException,
+            ConsentTerms.AdultOwnParticipationVersion, consent));
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private async Task CancelAsync(Guid requestId)
+    {
+        var result = await Founding.CancelAsync(requestId);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private static string? Module(string? code) => code switch
+    {
+        ProblemCodes.FoundingAlreadyFounder => "Você já fundou um clube. Marque o pedido de exceção.",
+        ProblemCodes.FoundingIsDirector => "Quem é diretor de um clube não pode pedir fundação.",
+        ProblemCodes.FoundingExceptionNotApplicable => "Você não fundou clube antes; desmarque o pedido de exceção.",
+        _ => null,
+    };
+}

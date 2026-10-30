@@ -1,0 +1,142 @@
+@page "/club/director"
+@inherits ClubPageBase
+@inject OrganizationApi Orgs
+
+<PageTitle>Direção do clube</PageTitle>
+
+<h1>Direção do clube</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case PageState.NoClub:
+        <p>Você ainda não participa de nenhum clube.</p>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        @if (nomination is not null && nomination.NomineeMembershipId == Club!.MembershipId)
+        {
+            <p>Você foi indicado para diretor.</p>
+            <button class="accept" @onclick="AcceptAsync">Aceitar</button>
+            <button class="decline" @onclick="DeclineAsync">Recusar</button>
+        }
+        else if (Has(RoleCode.Director))
+        {
+            @if (nomination is not null)
+            {
+                <p>Indicação pendente até @nomination.ExpiresAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture)</p>
+                <button class="cancel-nomination" @onclick="CancelAsync">Cancelar indicação</button>
+            }
+            else
+            {
+                <label>
+                    Sucessor
+                    <select class="nominee" @bind="nominee">
+                        <option value="">Escolha…</option>
+                        @foreach (var leader in candidates)
+                        {
+                            <option value="@leader.MembershipId">@leader.Name</option>
+                        }
+                    </select>
+                </label>
+                <button class="nominate" disabled="@(nominee is null)" @onclick="NominateAsync">Indicar sucessor</button>
+            }
+        }
+        else
+        {
+            <p>Nenhuma indicação para você.</p>
+        }
+        break;
+}
+
+@code {
+    private NominationResponse? nomination;
+    private List<LeaderResponse> candidates = [];
+    private Guid? nominee;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        if (Club is null)
+        {
+            State = PageState.NoClub;
+            return;
+        }
+
+        var current = await Orgs.CurrentNominationAsync(Club.Id);
+        if (!current.IsOk)
+        {
+            State = current.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(current.Error, current.ProblemCode, Module);
+            return;
+        }
+
+        candidates = [];
+        if (Has(RoleCode.Director))
+        {
+            var leaders = await Orgs.ListLeadersAsync(Club.Id);
+            if (!leaders.IsOk)
+            {
+                State = leaders.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+                await SucceededAsync(leaders.Error, leaders.ProblemCode, Module);
+                return;
+            }
+
+            candidates = leaders.Value!.Where(l => l.Status == MembershipStatus.Active && l.MembershipId != Club.MembershipId).ToList();
+        }
+
+        nomination = current.Value!.Nomination is { Status: NominationStatus.Pending } pending ? pending : null;
+        nominee = null;
+        State = PageState.Ready;
+    }
+
+    private async Task NominateAsync()
+    {
+        var result = await Orgs.NominateAsync(Club!.Id, nominee!.Value);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private async Task CancelAsync()
+    {
+        var result = await Orgs.CancelNominationAsync(Club!.Id, nomination!.Id);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private async Task AcceptAsync()
+    {
+        var result = await Orgs.AcceptNominationAsync(Club!.Id, nomination!.Id);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private async Task DeclineAsync()
+    {
+        var result = await Orgs.DeclineNominationAsync(Club!.Id, nomination!.Id);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private static string? Module(string? code) => code switch
+    {
+        ProblemCodes.NominationPendingExists => "Já há uma indicação pendente. Cancele-a antes.",
+        ProblemCodes.NominationTargetIneligible => "A pessoa indicada precisa ter participação ativa.",
+        ProblemCodes.NominationNominatorNotDirector => "Quem indicou não é mais o diretor; a indicação não vale.",
+        ProblemCodes.DirectorTargetIneligible => "Escolha outro líder ativo com 18 anos ou mais.",
+        _ => null,
+    };
+}

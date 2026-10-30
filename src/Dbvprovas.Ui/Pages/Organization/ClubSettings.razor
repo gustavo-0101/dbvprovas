@@ -1,0 +1,101 @@
+@page "/club/settings"
+@inherits ClubPageBase
+@inject FoundingApi Founding
+
+<PageTitle>Dados do clube</PageTitle>
+
+<h1>Dados do clube</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case PageState.NoClub:
+        <p>Você ainda não participa de nenhum clube.</p>
+        break;
+    case PageState.Forbidden:
+        <p>Só a diretoria e a secretaria editam os dados do clube.</p>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        <form class="settings-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+            <label>Nome do clube <input class="club-name" @bind="name" maxlength="120" /></label>
+            <label>Cidade <input class="club-city" @bind="city" maxlength="120" /></label>
+            <label>Igreja (opcional) <input class="club-church" @bind="church" maxlength="120" /></label>
+            <button type="submit" class="save">Salvar</button>
+        </form>
+        <p>Código de convite: <code class="invite-code">@inviteCode</code></p>
+        <button class="rotate-invite" @onclick="RotateAsync">Gerar novo código</button>
+        break;
+}
+
+@code {
+    private string name = string.Empty;
+    private string city = string.Empty;
+    private string? church;
+    private string inviteCode = string.Empty;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        if (Club is null)
+        {
+            State = PageState.NoClub;
+            return;
+        }
+
+        if (!IsDirectorOrSecretary)
+        {
+            State = PageState.Forbidden;
+            return;
+        }
+
+        var settings = await Founding.GetSettingsAsync(Club.Id);
+        if (!settings.IsOk)
+        {
+            State = settings.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(settings.Error, settings.ProblemCode, Module);
+            return;
+        }
+
+        Apply(settings.Value!);
+        State = PageState.Ready;
+    }
+
+    private void Apply(ClubSettingsResponse settings)
+    {
+        name = settings.Name;
+        city = settings.City;
+        church = settings.Church;
+        inviteCode = settings.InviteCode;
+    }
+
+    private async Task SaveAsync()
+    {
+        var result = await Founding.SaveSettingsAsync(Club!.Id, new ClubSettingsRequest(name, city, string.IsNullOrWhiteSpace(church) ? null : church));
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            Apply(result.Value!);
+    }
+
+    private async Task RotateAsync()
+    {
+        var result = await Founding.RotateInviteAsync(Club!.Id);
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            inviteCode = result.Value!.InviteCode;
+    }
+
+    // Esta tela não tem códigos próprios do módulo; os comuns vêm dos textos gerais.
+    private static string? Module(string? code) => null;
+}

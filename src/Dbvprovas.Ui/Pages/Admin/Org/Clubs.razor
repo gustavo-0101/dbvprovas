@@ -1,0 +1,83 @@
+@page "/admin/clubs"
+@inherits ClubPageBase
+@inject OrganizationApi Orgs
+
+<PageTitle>Clubes</PageTitle>
+
+<h1>Clubes</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case PageState.Forbidden:
+        <p role="alert">Esta área é só do admin da plataforma.</p>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        <form class="club-search-form" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+            <label>Buscar clube <input class="club-search" @bind="query" maxlength="60" /></label>
+            <button type="submit" class="search">Buscar</button>
+        </form>
+        <ul class="clubs">
+            @foreach (var club in clubs)
+            {
+                <li class="club">
+                    <a class="director-link" href="@UiRoutes.AdminClubDirector(club.Id)">@club.Name</a> — @club.City
+                    @if (!club.HasDirector)
+                    {
+                        <span> — Sem diretor</span>
+                    }
+                </li>
+            }
+        </ul>
+        break;
+}
+
+@code {
+    private List<AdminClubResponse> clubs = [];
+    private string? query;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        if (!Me!.IsPlatformAdmin)
+        {
+            State = PageState.Forbidden;
+            return;
+        }
+
+        await FetchAsync(null);
+    }
+
+    private async Task SearchAsync() => await FetchAsync(query);
+
+    private async Task FetchAsync(string? text)
+    {
+        var list = await Orgs.ListAdminClubsAsync(text);
+        if (!list.IsOk)
+        {
+            State = list.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(list.Error, list.ProblemCode, Module);
+            return;
+        }
+
+        clubs = list.Value!;
+        State = PageState.Ready;
+    }
+
+    // Esta tela não tem códigos próprios do módulo; os comuns vêm dos textos gerais.
+    private static string? Module(string? code) => null;
+}

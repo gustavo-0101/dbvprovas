@@ -328,9 +328,11 @@ public sealed class EndpointPolicyTests(PostgresFixture db)
 
         using var me = await anonymous.GetAsync(ApiRoutes.Me);
         using var members = await anonymous.GetAsync(ApiRoutes.Members(DevSeed.ClubA));
+        using var adminClub = await anonymous.GetAsync(ApiRoutes.AdminClub(DevSeed.ClubA));
 
         Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, members.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, adminClub.StatusCode);
     }
 
     [Fact]

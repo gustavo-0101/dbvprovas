@@ -1,0 +1,241 @@
+@page "/club/leaders"
+@inherits ClubPageBase
+@inject OrganizationApi Orgs
+
+<PageTitle>Liderança</PageTitle>
+
+<h1>Liderança</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case PageState.NoClub:
+        <p>Você ainda não participa de nenhum clube.</p>
+        break;
+    case PageState.Forbidden:
+        <p>Só a diretoria e a secretaria editam os dados do clube.</p>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        <ul class="leaders">
+            @foreach (var leader in leaders)
+            {
+                var own = leader.MembershipId == Club!.MembershipId;
+                var isDirector = leader.Roles.Any(r => r.Role == RoleCode.Director);
+                var row = RowOf(leader.MembershipId);
+                <li class="leader">
+                    <p>@leader.Name — @Labels.Of(leader.Status)</p>
+                    <ul class="roles">
+                        @foreach (var assignment in leader.Roles)
+                        {
+                            <li class="role-assigned">
+                                @Labels.Of(assignment.Role)@UnitSuffix(assignment.UnitId)
+                                @if (!own && assignment.Role != RoleCode.Director)
+                                {
+                                    <button class="end-role" @onclick="() => EndRoleAsync(assignment.AssignmentId)">Retirar</button>
+                                }
+                            </li>
+                        }
+                    </ul>
+                    @if (!own && leader.Status == MembershipStatus.Active)
+                    {
+                        <label>
+                            Cargo
+                            <select class="role" @bind="row.Role">
+                                <option value="">Escolha…</option>
+                                @foreach (var role in AssignableRoles)
+                                {
+                                    <option value="@role">@Labels.Of(role)</option>
+                                }
+                            </select>
+                        </label>
+                        @if (row.Role is { } chosen && RequiresUnit(chosen))
+                        {
+                            <label>
+                                Unidade
+                                <select class="unit" @bind="row.UnitId">
+                                    <option value="">Escolha…</option>
+                                    @foreach (var unit in units.Where(u => u.Status == UnitStatus.Active))
+                                    {
+                                        <option value="@unit.Id">@unit.Name</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                        <button class="assign" disabled="@(!CanAssign(row))" @onclick="() => AssignAsync(leader, row)">Atribuir</button>
+                        @if (!isDirector)
+                        {
+                            <label>
+                                Motivo da suspensão
+                                <select class="suspend-reason" @bind="row.SuspendReason">
+                                    <option value="">Escolha…</option>
+                                    @foreach (var reason in ReasonCodes.AllowedFor(ReasonOperation.Suspend))
+                                    {
+                                        <option value="@reason">@Labels.Of(reason)</option>
+                                    }
+                                </select>
+                            </label>
+                            <button class="suspend" disabled="@(row.SuspendReason is null)" @onclick="() => SuspendAsync(leader, row)">Suspender</button>
+                            <label>
+                                Motivo da remoção
+                                <select class="remove-reason" @bind="row.RemoveReason">
+                                    <option value="">Escolha…</option>
+                                    @foreach (var reason in ReasonCodes.AllowedFor(ReasonOperation.Remove))
+                                    {
+                                        <option value="@reason">@Labels.Of(reason)</option>
+                                    }
+                                </select>
+                            </label>
+                            <button class="remove" disabled="@(row.RemoveReason is null)" @onclick="() => RemoveAsync(leader, row)">Remover</button>
+                        }
+                    }
+                    @if (!own && leader.Status == MembershipStatus.Suspended)
+                    {
+                        <label>
+                            Motivo da reativação
+                            <select class="reactivate-reason" @bind="row.ReactivateReason">
+                                <option value="">Escolha…</option>
+                                @foreach (var reason in ReasonCodes.AllowedFor(ReasonOperation.Reactivate))
+                                {
+                                    <option value="@reason">@Labels.Of(reason)</option>
+                                }
+                            </select>
+                        </label>
+                        <button class="reactivate" disabled="@(row.ReactivateReason is null)" @onclick="() => ReactivateAsync(leader, row)">Reativar</button>
+                    }
+                </li>
+            }
+        </ul>
+        break;
+}
+
+@code {
+    private sealed class Row
+    {
+        public RoleCode? Role { get; set; }
+
+        public Guid? UnitId { get; set; }
+
+        public ReasonCode? SuspendReason { get; set; }
+
+        public ReasonCode? RemoveReason { get; set; }
+
+        public ReasonCode? ReactivateReason { get; set; }
+    }
+
+    private static readonly RoleCode[] AssignableRoles = Enum.GetValues<RoleCode>().Where(r => r != RoleCode.Director).ToArray();
+
+    private List<LeaderResponse> leaders = [];
+    private List<UnitResponse> units = [];
+    private readonly Dictionary<Guid, Row> rows = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private static bool RequiresUnit(RoleCode role) => role is RoleCode.Counselor or RoleCode.AssociateCounselor;
+
+    private static bool CanAssign(Row row) => row.Role is { } role && (!RequiresUnit(role) || row.UnitId is not null);
+
+    private Row RowOf(Guid membershipId)
+    {
+        if (!rows.TryGetValue(membershipId, out var row))
+            rows[membershipId] = row = new Row();
+        return row;
+    }
+
+    private string UnitSuffix(Guid? unitId) =>
+        unitId is { } id && units.FirstOrDefault(u => u.Id == id) is { } unit ? $" — {unit.Name}" : string.Empty;
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        if (Club is null)
+        {
+            State = PageState.NoClub;
+            return;
+        }
+
+        if (!IsDirectorOrSecretary)
+        {
+            State = PageState.Forbidden;
+            return;
+        }
+
+        var list = await Orgs.ListLeadersAsync(Club.Id);
+        var unitList = await Orgs.ListUnitsAsync(Club.Id);
+        var error = list.Error ?? unitList.Error;
+        if (error is not null)
+        {
+            State = error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(error, list.IsOk ? unitList.ProblemCode : list.ProblemCode, Module);
+            return;
+        }
+
+        leaders = list.Value!;
+        units = unitList.Value!;
+        rows.Clear();
+        State = PageState.Ready;
+    }
+
+    private async Task FinishAsync(ApiError? error, string? code)
+    {
+        if (await SucceededAsync(error, code, Module))
+            await LoadAsync();
+    }
+
+    private async Task AssignAsync(LeaderResponse leader, Row row)
+    {
+        var role = row.Role!.Value;
+        var result = await Orgs.AssignRoleAsync(Club!.Id, new AssignRoleRequest(leader.MembershipId, role, RequiresUnit(role) ? row.UnitId : null));
+        await FinishAsync(result.Error, result.ProblemCode);
+    }
+
+    private async Task EndRoleAsync(Guid assignmentId)
+    {
+        var result = await Orgs.EndRoleAsync(Club!.Id, assignmentId);
+        await FinishAsync(result.Error, result.ProblemCode);
+    }
+
+    private async Task SuspendAsync(LeaderResponse leader, Row row)
+    {
+        var result = await Orgs.SuspendAsync(Club!.Id, leader.MembershipId, row.SuspendReason!.Value);
+        await FinishAsync(result.Error, result.ProblemCode);
+    }
+
+    private async Task RemoveAsync(LeaderResponse leader, Row row)
+    {
+        var result = await Orgs.RemoveAsync(Club!.Id, leader.MembershipId, row.RemoveReason!.Value);
+        await FinishAsync(result.Error, result.ProblemCode);
+    }
+
+    private async Task ReactivateAsync(LeaderResponse leader, Row row)
+    {
+        var result = await Orgs.ReactivateAsync(Club!.Id, leader.MembershipId, row.ReactivateReason!.Value);
+        await FinishAsync(result.Error, result.ProblemCode);
+    }
+
+    private static string? Module(string? code) => code switch
+    {
+        ProblemCodes.RoleUniqueTaken => "Esse cargo já tem titular no clube.",
+        ProblemCodes.RoleAlreadyAssigned => "A pessoa já tem esse cargo.",
+        ProblemCodes.RoleTargetIneligible => "A pessoa precisa ser líder com participação ativa.",
+        ProblemCodes.RoleUnitSexMismatch => "O conselheiro precisa ser do mesmo sexo da unidade.",
+        ProblemCodes.RoleUnitRequired => "Escolha a unidade do conselheiro.",
+        ProblemCodes.RoleUnitInactive => "A unidade está inativa.",
+        ProblemCodes.MembershipTargetDirector => "O diretor não é suspenso nem removido; ele transfere a direção antes.",
+        ProblemCodes.MembershipNotSuspended => "A participação não está suspensa.",
+        ProblemCodes.MembershipEnded => "A participação está encerrada; o retorno é por um novo pedido de entrada.",
+        ProblemCodes.MembershipOtherActive => "A pessoa já tem outra participação ativa.",
+        _ => null,
+    };
+}

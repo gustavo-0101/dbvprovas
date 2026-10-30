@@ -1,0 +1,150 @@
+@page "/admin/founding-requests"
+@inherits ClubPageBase
+@inject FoundingApi Founding
+
+<PageTitle>Pedidos de fundação</PageTitle>
+
+<h1>Pedidos de fundação</h1>
+
+@switch (State)
+{
+    case PageState.Loading:
+        <p>Carregando…</p>
+        break;
+    case PageState.Unavailable:
+        <p role="alert">Não foi possível falar com o servidor.</p>
+        <button class="retry" @onclick="LoadAsync">Tentar de novo</button>
+        break;
+    case PageState.Forbidden:
+        <p role="alert">Esta área é só do admin da plataforma.</p>
+        break;
+    default:
+        @if (Message is not null)
+        {
+            <p role="alert">@Message</p>
+        }
+        @if (requests.Count == 0)
+        {
+            <p>Nenhum pedido pendente.</p>
+        }
+        <ul class="requests">
+            @foreach (var request in requests)
+            {
+                var row = RowOf(request.Id);
+                var approveReady = !request.RequesterFoundedBefore || (row.GrantException && row.ExceptionReason is not null);
+                <li class="request">
+                    <p>
+                        <strong>@request.ClubName</strong> — @request.City
+                        @if (!string.IsNullOrWhiteSpace(request.Church))
+                        {
+                            <span> — @request.Church</span>
+                        }
+                    </p>
+                    <p>
+                        @request.RequesterName — @(request.RequesterIsAdult ? "Maior de idade" : "Menor de idade")
+                        @if (request.RequesterFoundedBefore)
+                        {
+                            <span> — Já fundou</span>
+                        }
+                    </p>
+                    <label>
+                        Motivo da recusa
+                        <select class="reject-reason" @bind="row.RejectReason">
+                            <option value="">Escolha…</option>
+                            @foreach (var reason in ReasonCodes.AllowedFor(ReasonOperation.RejectRequest))
+                            {
+                                <option value="@reason">@Labels.Of(reason)</option>
+                            }
+                        </select>
+                    </label>
+                    <button class="reject" disabled="@(row.RejectReason is null)" @onclick="() => RejectAsync(request)">Recusar</button>
+                    @if (request.RequesterFoundedBefore)
+                    {
+                        <label><input type="checkbox" class="grant-exception" @bind="row.GrantException" /> Conceder exceção</label>
+                        <label>
+                            Motivo da exceção
+                            <select class="exception-reason" @bind="row.ExceptionReason">
+                                <option value="">Escolha…</option>
+                                @foreach (var reason in ReasonCodes.AllowedFor(ReasonOperation.FoundingException))
+                                {
+                                    <option value="@reason">@Labels.Of(reason)</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    <button class="approve" disabled="@(!approveReady)" @onclick="() => ApproveAsync(request)">Aprovar</button>
+                </li>
+            }
+        </ul>
+        break;
+}
+
+@code {
+    private sealed class Row
+    {
+        public ReasonCode? RejectReason { get; set; }
+
+        public bool GrantException { get; set; }
+
+        public ReasonCode? ExceptionReason { get; set; }
+    }
+
+    private List<AdminFoundingRequestResponse> requests = [];
+    private readonly Dictionary<Guid, Row> rows = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private Row RowOf(Guid id)
+    {
+        if (!rows.TryGetValue(id, out var row))
+            rows[id] = row = new Row();
+        return row;
+    }
+
+    private async Task LoadAsync()
+    {
+        State = PageState.Loading;
+        if (!await LoadMeAsync())
+            return;
+        if (!Me!.IsPlatformAdmin)
+        {
+            State = PageState.Forbidden;
+            return;
+        }
+
+        var pending = await Founding.ListPendingAsync();
+        if (!pending.IsOk)
+        {
+            State = pending.Error == ApiError.Unavailable ? PageState.Unavailable : PageState.Ready;
+            await SucceededAsync(pending.Error, pending.ProblemCode, Module);
+            return;
+        }
+
+        requests = pending.Value!;
+        rows.Clear();
+        State = PageState.Ready;
+    }
+
+    private async Task ApproveAsync(AdminFoundingRequestResponse request)
+    {
+        var row = RowOf(request.Id);
+        var grant = request.RequesterFoundedBefore && row.GrantException;
+        var result = await Founding.ApproveAsync(request.Id, new ApproveFoundingRequest(grant, grant ? row.ExceptionReason : null));
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private async Task RejectAsync(AdminFoundingRequestResponse request)
+    {
+        var result = await Founding.RejectAsync(request.Id, new RejectFoundingRequest(RowOf(request.Id).RejectReason));
+        if (await SucceededAsync(result.Error, result.ProblemCode, Module))
+            await LoadAsync();
+    }
+
+    private static string? Module(string? code) => code switch
+    {
+        ProblemCodes.FoundingOwnRequest => "O admin não decide o próprio pedido.",
+        ProblemCodes.FoundingExceptionRequired => "Este pedido só pode ser aprovado com a exceção.",
+        _ => null,
+    };
+}
