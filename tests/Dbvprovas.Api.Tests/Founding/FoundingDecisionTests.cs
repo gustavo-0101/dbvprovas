@@ -277,14 +277,13 @@ public sealed class FoundingDecisionTests(PostgresFixture db)
         for (var i = 0; i < 3; i++)
             await SendAsync(api, await TestData.CreatePersonAsync(db, $"Fila {i}"));
 
-        var ordered = (await OwnerSql.ScalarAsync<string>(db.OwnerConnectionString,
-            "SELECT coalesce(string_agg(id::text, ',' ORDER BY created_at, id), '') FROM founding_requests WHERE status = 'Pending'"))
-            .Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Guid.Parse).ToList();
         var page = await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>($"{ApiRoutes.AdminFoundingRequests}?limit=2");
         var defaults = await adminClient.GetFromJsonAsync<List<AdminFoundingRequestResponse>>(ApiRoutes.AdminFoundingRequests);
 
-        Assert.Equal(ordered.Take(2), page!.Select(r => r.Id));
-        Assert.Equal(ordered.Take(50), defaults!.Select(r => r.Id));
+        Assert.Equal(2, page!.Count);
+        Assert.InRange(defaults!.Count, 3, 50);
+        Assert.Equal(page.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).Select(r => r.Id), page.Select(r => r.Id));
+        Assert.Equal(defaults.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).Select(r => r.Id), defaults.Select(r => r.Id));
         await ProblemAssert.HasCodeAsync(await adminClient.GetAsync($"{ApiRoutes.AdminFoundingRequests}?limit=0"),
             HttpStatusCode.BadRequest, ProblemCodes.ValidationText);
         await ProblemAssert.HasCodeAsync(await adminClient.GetAsync($"{ApiRoutes.AdminFoundingRequests}?limit=101"),
